@@ -15,6 +15,9 @@ public sealed class M3CheckTests
             => new Dictionary<string, object?>();
 
         public IReadOnlyList<string> GetLocalMachineSubKeyNames(string keyPath) => [];
+
+        public IReadOnlyDictionary<string, object?> GetCurrentUserValues(string keyPath)
+            => new Dictionary<string, object?>();
     }
 
     private sealed class StubAccounts : ILocalAccountSource

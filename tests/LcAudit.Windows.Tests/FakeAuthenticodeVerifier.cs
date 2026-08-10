@@ -7,6 +7,8 @@ internal sealed class FakeAuthenticodeVerifier(SignatureVerdict verdict) : IAuth
 {
     public SignatureVerdict Verify(string filePath) => verdict with { FilePath = filePath };
 
+    public SignatureVerdict VerifyIncludingCatalog(string filePath) => Verify(filePath);
+
     internal static SignatureVerdict Verdict(
         SignatureTrust trust,
         string? organization = null,

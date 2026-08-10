@@ -17,7 +17,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 已端到端驗證：正常簽章但簽章者非 NCSOFT → M1-02 Fail(40) → 強制「極高」→ 結束代碼 3；改造正版（竄改）→ M1-01 BadDigest + M1-02 皆 Fail(80)。
 
-**M3 已完成 8/13**：M3-01、02、03、04、05、10、11、13。**尚未實作**：M1-03～M1-08、M3-06（Run/RunOnce + 啟動資料夾）、M3-07（排程工作，需 `ITaskService` COM）、M3-08（非預期服務）、M3-09（防火牆，需 `INetFwPolicy2` COM）、M3-12（WMI 事件訂閱）、M4。CLI 參數已全部接通（`--days`／`--purple-path`／`--output`／`--format`／`--skip-module`）。
+**M3 已完成 10/13**：M3-01～06、08、10、11、13。**尚未實作**：M1-03～M1-08、M3-07（排程工作，需 `ITaskService` COM）、M3-09（防火牆，需 `INetFwPolicy2` COM）、M3-12（WMI 事件訂閱）、M4。
+
+全量掃描實測約 7 秒（含 150 個服務的簽章驗證），遠低於 NFR-01 的 3 分鐘上限。簽章驗證務必用路徑做快取 —— svchost 代管的服務全指向同一個執行檔。CLI 參數已全部接通（`--days`／`--purple-path`／`--output`／`--format`／`--skip-module`）。
 
 **注意 M2 的驗證缺口**：M2-04 的具名欄位擷取已對真實事件驗證通過（使用者、來源位址、事件類型皆正確）。但 **Security 記錄相關項（M2-00～M2-03、M2-10）的「有資料」路徑仍只用假資料測過** —— 本機開發時未提權。首次以系統管理員執行時要重點確認 4624/4625 的 `TargetUserName`、`IpAddress`、`LogonType` 有正確填入，欄位名稱對不上的話會全部變成空值而靜默判 Pass。
 
@@ -43,6 +45,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **禁止 `X509Certificate.CreateFromSignedFile()`** — 它根本不驗證簽章，只是掃檔案任意位置找像憑證的東西。偽造的紫P 只要把 NCSOFT 公開憑證塞進資源區段就能通過。
 - **禁止 `CERT_QUERY_CONTENT_FLAG_ALL`** — `CryptQueryObject` 的旗標必須且只能是 `CERT_QUERY_CONTENT_FLAG_PKCS7_SIGNED_EMBED` (0x400)。
 - 正確作法：`Status` 判定走 `WinVerifyTrust`（`WINTRUST_ACTION_GENERIC_VERIFY_V2`），`Signer` 抽取走 `CryptQueryObject` + PKCS7_SIGNED_EMBED，**兩者皆通過才算 Pass**。
+- **內嵌簽章與目錄簽章要分開看**。`IAuthenticodeVerifier` 有兩個方法：`Verify()` 只驗內嵌（**M1 專用**），`VerifyIncludingCatalog()` 內嵌不過再查 CatRoot 目錄檔（**M3-06／M3-08 專用**）。Windows 系統檔案（`notepad.exe`、絕大多數 `.sys` 驅動）沒有內嵌簽章，只驗內嵌會把整個作業系統判成未簽章 —— 實測 M3-08 的 150 個服務會誤標 13 個、M3-06 的 16 個啟動項誤標 6 個。反過來，M1 **不可**放寬到目錄簽章：紫P 是第三方程式，本來就該有自己的內嵌簽章。
 - **回歸測試守門員是「被竄改的已簽章檔案」**，不是規格說的 `cert-embedded-unsigned.exe`。已在本機實測確認：拿正版 `dotnet.exe` 改動中段一個位元組後，`WinVerifyTrust` 回 `TRUST_E_BAD_DIGEST`（正確），而 `CreateFromSignedFile` 照樣回報「O=Microsoft Corporation」，對竄改毫無反應。假紫P 最省事的做法就是改造正版，不必自己弄憑證。
 - `cert-embedded-unsigned.exe` 這個素材**沒有重現**技術設計 §0 描述的繞過。已試兩種構造（DER 附加於 PE 尾端、編為 .NET 內嵌資源），`CreateFromSignedFile` 兩者都拋 `CryptographicException` 而非回報憑證裡的簽章者。它仍是合理的負面案例，但別當它是守門員。若要做出真正的資源區段陷阱，需以 Win32 資源（而非 .NET 內嵌資源）寫入，尚未驗證。
 - 禁令不因此放寬：`CreateFromSignedFile` 的致命缺陷是**它根本不做任何驗證**，上面的竄改實測已足以證明。

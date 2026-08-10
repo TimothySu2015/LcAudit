@@ -58,6 +58,9 @@ public sealed record SignatureVerdict
 
     public DateTimeOffset? NotAfter { get; init; }
 
+    /// <summary>簽章來自目錄檔（Catalog）而非內嵌。Windows 系統檔案幾乎都是這一類。</summary>
+    public bool IsCatalogSigned { get; init; }
+
     /// <summary>簽章有效且成功取得簽章者 —— M1-01 與 M1-02 都要靠這兩件事同時成立。</summary>
     public bool IsTrustedAndIdentified => Trust == SignatureTrust.Valid && SignerOrganization is not null;
 }

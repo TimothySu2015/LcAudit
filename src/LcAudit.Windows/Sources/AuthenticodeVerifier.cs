@@ -59,6 +59,30 @@ public sealed class AuthenticodeVerifier : IAuthenticodeVerifier
         };
     }
 
+    public SignatureVerdict VerifyIncludingCatalog(string filePath)
+    {
+        var embedded = Verify(filePath);
+
+        // 內嵌簽章已通過，或檔案根本讀不到 —— 都不需要再查目錄
+        if (embedded.Trust is SignatureTrust.Valid or SignatureTrust.FileNotReadable)
+        {
+            return embedded;
+        }
+
+        var catalogResult = WinTrustCatalog.VerifyCatalogSignature(filePath);
+        if (catalogResult is not { } hResult)
+        {
+            // 沒有任何目錄檔涵蓋這個檔案 —— 維持內嵌簽章的判定
+            return embedded;
+        }
+
+        var trust = MapTrust(hResult, 0);
+
+        return trust == SignatureTrust.Valid
+            ? embedded with { Trust = SignatureTrust.Valid, HResult = hResult, IsCatalogSigned = true }
+            : embedded;
+    }
+
     /// <summary>HRESULT → <see cref="SignatureTrust"/>（技術設計 §4.1 對照表）。</summary>
     internal static SignatureTrust MapTrust(int hResult, int lastError) => hResult switch
     {

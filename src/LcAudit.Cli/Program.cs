@@ -202,6 +202,8 @@ static ServiceCollection BuildServices()
     RegisterCheck<M3_03_RemoteDesktopUsersCheck>(services);
     RegisterCheck<M3_04_LocalAccountsCheck>(services);
     RegisterCheck<M3_05_AdministratorsGroupCheck>(services);
+    RegisterCheck<M3_06_AutoStartCheck>(services);
+    RegisterCheck<M3_08_UnexpectedServicesCheck>(services);
     RegisterCheck<M3_10_DefenderExclusionsCheck>(services);
     RegisterCheck<M3_11_DefenderStatusCheck>(services);
     RegisterCheck<M3_13_HostsFileCheck>(services);
