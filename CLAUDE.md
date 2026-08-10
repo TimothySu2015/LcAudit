@@ -56,8 +56,10 @@ M1 已端到端驗證：`plaync.com.evil.tw` 被 M1-04 擋下（後綴比對）�
 
 其他易錯點：
 - 簽章者比對必須解析 DN 取 `O=` 欄位，**不可** `cert.Subject.Contains("NCSOFT")`（`CN=NCSOFT-Free-Launcher, O=Evil Ltd` 會通過）。
-- **技術設計 §4.3 寫的 `"NCSOFT Corporation"` 是錯的**，且該值從未經實檔驗證。實際觀察到的官方憑證組織名稱是 `NCsoft Corp.`（韓國法人，`L=Seoul, C=KR`，SGTRUST CODE SIGNING CA）與 `NCsoft`（美國法人，`L=Austin, S=Texas, C=US`，VeriSign）—— 連大小寫都不同。同一發行者名下至少有 5 張憑證，字串不保證一致。若沿用原本的「完全相符＋區分大小寫」，**正版紫P 會被判 `Fail` → Critical → 極高，等於告訴乾淨的使用者「你被入侵了，去重灌」**。這是本工具最嚴重的失敗模式。
-- 因此 `SignerNameValidator.Classify()` 採三級判定：符合已知清單 → `Official`(Pass)；`O=` 含 `NCSOFT` 但不在清單 → `LikelyOfficial`(**Warning**)；不含 → `NotOfficial`(Fail)。放寬到「含 NCSOFT」不會重開 CN 陷阱 —— 仍然只看 `O=` 欄位，攻擊者需要 CA 簽發憑證給法定名稱含 NCSOFT 的公司，而 CA 會查驗登記文件。拿到新的實際值請加進 `KnownOfficialOrganizations`。
+- **現行官方簽章者是 `O=NC Corporation`，不是 `NCSOFT`。** 已下載官方安裝檔 `PURPLE_Installer_2_26_803_19.exe` 實測確認，完整 Subject 為 `CN=NC Corporation, O=NC Corporation, L=Seongnam, S=Gyeonggi, C=KR`，簽發者是 Microsoft ID Verified CS EOC CA（Azure Trusted Signing）。**公司已更名，組織名稱中不再出現 "NCSOFT" 字串。**
+- 技術設計 §4.3 寫的 `"NCSOFT Corporation"` 是錯的。更早的舊憑證是 `NCsoft Corp.`（韓國）與 `NCsoft`（美國）。任何以「完全相符」或「Contains("NCSOFT")」為基礎的判定，都會把**官方安裝檔本身**判為假紫P → Critical → 極高 → 對 100% 的正常使用者喊「端點已不可信，建議重灌」。這是本工具最嚴重的失敗模式。
+- 因此 `SignerNameValidator.Classify()` 採三級判定：符合 `KnownOfficialOrganizations` → `Official`(Pass)；**第一個字詞**為 `NC` 或以 `NCSOFT` 開頭 → `LikelyOfficial`(**Warning**)；其餘 → `NotOfficial`(Fail)。用字詞邊界而非 `Contains` 才排得掉 `NCR Corporation`、`NCC Group`、`Encoding Ltd`。仍然只看 `O=` 欄位，CN 陷阱依舊擋得住。
+- **Azure Trusted Signing 的憑證有效期只有數天**（實測那張是 2026-08-06～08-09）。所以「憑證已過期但簽章有效」是**常態而非異常** —— M1-03 從 `WinVerifyTrust` 回 `Valid` 反推「有時間戳」的設計因此是正確且必要的。
 - 網域白名單必須是**後綴比對**（`host == allowed || host.EndsWith("." + allowed)`，取 `uri.IdnHost` 正規化），**不可** `Contains`／`-like "*plaync*"`（`plaync.com.evil.tw` 會誤判為安全）。
 - **功能規格的白名單漏了 `ncupdate.com`**。官方下載頁指向 `https://gs-purple-inst.download.ncupdate.com/Purple/PURPLE_Installer_*.exe`（已實測確認）。漏掉它的後果是：**任何人從官網下載紫P 都會被 M1-04 判 `Fail` → Critical → 極高**，也就是對絕大多數正常使用者喊「假紫P，建議重灌」。
 - 因此 `DownloadHostValidator.Classify()` 也改三級：正確後綴 → `Official`(Pass)；**網域字串嵌了官方網域卻不是其子網域** → `Impersonation`(**Fail**，`plaync.com.evil.tw` 這種只有仿冒一種解釋)；與官方無關 → `Unknown`(**Warning**)。白名單是靜態清單、必定不完整，官方隨時可能換 CDN —— 漏收的代價不該由使用者承擔。

@@ -40,33 +40,65 @@ public sealed class SignerNameValidatorTests
     /// 兩者都不是技術設計 §4.3 寫的 <c>NCSOFT Corporation</c>，連大小寫都不同。
     /// </summary>
     [Theory]
-    [InlineData("NCsoft Corp.")]        // C=KR，SGTRUST CODE SIGNING CA
-    [InlineData("NCsoft")]              // C=US，VeriSign
-    [InlineData("NCSOFT Corporation")]  // 技術設計文件所載
+    [InlineData("NC Corporation")]      // 現行值，取自官方安裝檔實際簽章
+    [InlineData("NCsoft Corp.")]        // 舊值，C=KR，SGTRUST CODE SIGNING CA
+    [InlineData("NCsoft")]              // 舊值，C=US，VeriSign
+    [InlineData("NCSOFT Corporation")]  // 技術設計文件所載（實際上是錯的）
     [InlineData("NCSOFT CORP.")]        // 大小寫不構成安全邊界
-    [InlineData("  NCsoft Corp.  ")]    // 前後空白不應影響判定
+    [InlineData("  NC Corporation  ")]  // 前後空白不應影響判定
     public void 已知的官方組織名稱判為Official(string organization)
         => Assert.Equal(SignerVerdict.Official, SignerNameValidator.Classify(organization));
+
+    /// <summary>
+    /// <b>本檔最重要的回歸測試。</b>
+    /// <para>
+    /// 官方安裝檔 PURPLE_Installer_2_26_803_19.exe 的實際簽章者。
+    /// 公司已從 NCSOFT 更名為 NC Corporation，組織名稱中不再含 "NCSOFT" 字串 ——
+    /// 任何以 <c>Contains("NCSOFT")</c> 為基礎的判定都會把官方安裝檔判為假紫P，
+    /// 對 100% 的正常使用者喊「端點已不可信，建議重灌」。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void 官方安裝檔的實際簽章者必須判為Official()
+    {
+        var dn = new X500DistinguishedName(
+            "CN=NC Corporation, O=NC Corporation, L=Seongnam, S=Gyeonggi, C=KR");
+
+        Assert.Equal("NC Corporation", SignerNameValidator.GetOrganization(dn));
+        Assert.Equal(SignerVerdict.Official, SignerNameValidator.Classify(dn));
+    }
 
     /// <summary>
     /// 含 NCSOFT 但不在清單中 —— 很可能是尚未收錄的官方憑證變體。
     /// 判 LikelyOfficial 而非 NotOfficial，避免把正版使用者嚇去重灌。
     /// </summary>
+    /// <summary>
+    /// 集團旗下的其他法人 —— 第一個字詞為 NC 或 NCSOFT 開頭即視為疑似官方。
+    /// 判 LikelyOfficial（Warning）而非 NotOfficial（Fail），避免把正版使用者嚇去重灌。
+    /// </summary>
     [Theory]
+    [InlineData("NC Taiwan Co., Ltd.")]
+    [InlineData("NC Japan K.K.")]
     [InlineData("NCSOFT Taiwan Ltd.")]
     [InlineData("NCsoft West")]
-    [InlineData("NCSOFT 서비스")]
-    public void 含NCSOFT但未收錄判為LikelyOfficial(string organization)
+    [InlineData("NC Soft Corporation")]
+    public void NC集團的其他法人判為LikelyOfficial(string organization)
         => Assert.Equal(SignerVerdict.LikelyOfficial, SignerNameValidator.Classify(organization));
 
+    /// <summary>
+    /// 用字詞邊界比對而非 Contains，才排得掉這些前綴相近但無關的公司。
+    /// 若用 <c>Contains("NC")</c>，連 Encoding Ltd 都會通過。
+    /// </summary>
     [Theory]
     [InlineData("Evil Ltd")]
     [InlineData("Microsoft Corporation")]
-    [InlineData("NC Soft Corporation")]   // 有空格就不含 "NCSOFT" 這個字串
+    [InlineData("NCR Corporation")]
+    [InlineData("NCC Group")]
+    [InlineData("Encoding Ltd")]
     [InlineData("")]
     [InlineData("   ")]
     [InlineData(null)]
-    public void 與NCSOFT無關者判為NotOfficial(string? organization)
+    public void 與NC集團無關者判為NotOfficial(string? organization)
         => Assert.Equal(SignerVerdict.NotOfficial, SignerNameValidator.Classify(organization));
 
     [Fact]

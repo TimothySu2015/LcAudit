@@ -38,9 +38,9 @@ public static class SignerNameValidator
     /// <item><c>NCsoft</c> — 美國法人（<c>L=Austin, S=Texas, C=US</c>，VeriSign）</item>
     /// </list>
     /// <para>
-    /// 技術設計 §4.3 寫的是 <c>NCSOFT Corporation</c>，但那個值**未經實檔驗證**，
-    /// 與上述兩個觀察值都不相符（連大小寫都不同）。保留在清單中以防某張憑證確實如此，
-    /// 但不可再假設它是唯一正確答案。
+    /// <b>技術設計 §4.3 寫的 <c>NCSOFT Corporation</c> 是錯的</b>，且從未經實檔驗證。
+    /// 現行官方安裝檔的簽章者是 <c>NC Corporation</c> —— 公司已更名，連 "NCSOFT"
+    /// 這個字串都不再出現。舊值保留在清單中僅為相容於尚未更新的舊安裝。
     /// </para>
     /// <para>
     /// 拿到新的實際值時請加進這裡 —— 加入清單只會讓判定更準，不會放寬安全性，
@@ -49,15 +49,18 @@ public static class SignerNameValidator
     /// </summary>
     public static readonly IReadOnlyList<string> KnownOfficialOrganizations =
     [
+        // 現行值 —— 取自官方安裝檔 PURPLE_Installer_2_26_803_19.exe 的實際簽章，
+        // 完整 Subject：CN=NC Corporation, O=NC Corporation, L=Seongnam, S=Gyeonggi, C=KR
+        // 簽發者為 Microsoft ID Verified CS EOC CA（Azure Trusted Signing）。
+        "NC Corporation",
+
+        // 舊值 —— NCSOFT 更名為 NC Corporation 之前的憑證
         "NCsoft Corp.",
         "NCsoft",
         "NCSOFT Corporation",
         "NCSOFT Corp.",
         "NCSOFT",
     ];
-
-    /// <summary>比對用的關鍵字。<c>O=</c> 欄位含此字串才可能是官方。</summary>
-    private const string OrganizationKeyword = "NCSOFT";
 
     /// <summary>
     /// Organization 屬性的 OID。
@@ -125,9 +128,35 @@ public static class SignerNameValidator
             return SignerVerdict.Official;
         }
 
-        return trimmed.Contains(OrganizationKeyword, StringComparison.OrdinalIgnoreCase)
-            ? SignerVerdict.LikelyOfficial
-            : SignerVerdict.NotOfficial;
+        return IsNcGroupName(trimmed) ? SignerVerdict.LikelyOfficial : SignerVerdict.NotOfficial;
+    }
+
+    /// <summary>
+    /// 組織名稱看起來屬於 NC 集團。
+    /// <para>
+    /// 比對<b>第一個字詞</b>是否為 <c>NC</c> 或以 <c>NCSOFT</c> 開頭，
+    /// 而非用 <c>Contains</c>。集團旗下有多個法人（NC Corporation、NC Taiwan、
+    /// NCsoft Corp.…），但用 Contains 會讓 <c>Encoding Ltd</c> 這種含 "nc" 的
+    /// 無關公司通過。
+    /// </para>
+    /// <para>
+    /// 以字詞邊界比對可正確排除 <c>NCR Corporation</c>、<c>NCC Group</c> 這類
+    /// 前綴相近但無關的公司。
+    /// </para>
+    /// </summary>
+    private static bool IsNcGroupName(string organization)
+    {
+        var firstToken = organization
+            .Split([' ', ',', '.'], StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault();
+
+        if (string.IsNullOrEmpty(firstToken))
+        {
+            return false;
+        }
+
+        return firstToken.Equals("NC", StringComparison.OrdinalIgnoreCase)
+               || firstToken.StartsWith("NCSOFT", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>判斷 DN 的簽章者身分。</summary>

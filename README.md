@@ -56,6 +56,58 @@ gh attestation verify .\LcAudit.exe --repo TimothySu2015/LcAudit
 - Windows 10 或 Windows 11（64 位元）
 - 建議以**系統管理員身分**執行（差別很大，見下方說明）
 
+---
+
+## 紫P 的官方資訊
+
+以下是本工具用來判斷「你的紫P 是不是正版」的依據。**這些資料都是實際查證過的**，你也可以自己核對。
+
+### 官方下載
+
+| 項目 | 網址 |
+|---|---|
+| 官方下載頁 | `https://lineageclassic.plaync.com/zh-tw/download/index` |
+| 安裝檔實際來源 | `https://gs-purple-inst.download.ncupdate.com/Purple/PURPLE_Installer_<版本>.exe` |
+
+安裝檔檔名會隨版本改變（例如 `PURPLE_Installer_2_26_803_19.exe`）。
+
+**認網域，不要認字串。** `plaync.com.evil.tw` 看起來有 `plaync.com`，但它真正的網域是 `evil.tw`。判斷方法是**從右邊往左讀**：最後兩段才是真正的網域。
+
+### 官方網域清單
+
+工具比對下載來源時使用的白名單：
+
+```
+plaync.com       遊戲官網
+playnccdn.com    資源與圖片
+ncsoft.com       公司官網
+ncupdate.com     安裝檔與更新檔的下載主機
+```
+
+以及它們的子網域（例如 `gs-purple-inst.download.ncupdate.com` 是 `ncupdate.com` 的子網域，屬於官方）。
+
+### 官方數位簽章
+
+正版紫P 的簽章者資訊：
+
+```
+CN=NC Corporation, O=NC Corporation, L=Seongnam, S=Gyeonggi, C=KR
+簽發者：Microsoft ID Verified CS EOC CA（Azure Trusted Signing）
+```
+
+**注意公司名稱是「NC Corporation」，不是「NCSOFT」** —— NCSOFT 已更名，舊資料上的 `NCSOFT Corporation` 已經不是現行的簽章者名稱。
+
+你可以自己檢查手上的紫P：
+
+```powershell
+Get-AuthenticodeSignature "紫P安裝路徑\Purple.exe" | Format-List Status, SignerCertificate
+```
+
+- `Status` 應為 `Valid`
+- 憑證的 `Subject` 應含 `O=NC Corporation`
+
+> **憑證顯示「已過期」是正常的。** 官方使用 Azure Trusted Signing，憑證有效期只有短短幾天，簽章時會附上時間戳。只要 `Status` 是 `Valid` 就沒問題 —— 這代表簽章當下憑證有效。本工具的 M1-03 已正確處理這個情況。
+
 ### 執行前請先做兩件事
 
 **1. 關閉天堂與紫P**
