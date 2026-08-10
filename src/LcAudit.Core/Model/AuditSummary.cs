@@ -11,6 +11,15 @@ public sealed record AuditSummary
 
     public required int CriticalHits { get; init; }
 
+    /// <summary>
+    /// 等級被強制拉高的原因；未被拉高時為 <c>null</c>。
+    /// <para>
+    /// 報告必須說明「為什麼只有 10 分卻標示為高風險」，否則使用者會覺得工具在亂報，
+    /// 反而降低對其他發現的信任。
+    /// </para>
+    /// </summary>
+    public string? LevelRaisedBy { get; init; }
+
     public required IReadOnlyList<Inference> Inferences { get; init; }
 
     /// <summary>本次以 <c>--skip-module</c> 跳過的模組。</summary>

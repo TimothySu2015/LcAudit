@@ -83,11 +83,20 @@ public abstract class RemoteToolCheckBase(IRemoteToolScanner scanner, RemoteTool
             ? $"首見 {timed.Min():yyyy-MM-dd HH:mm}，末見 {timed.Max():yyyy-MM-dd HH:mm}。"
             : string.Empty;
 
+        // 「裝了」是 Warning，「有人真的連進來過」是 Fail。
+        //
+        // 這兩件事的確定性差很多：前者可能是使用者自己裝來遠端работы的，
+        // 後者是「確實有一條從外部進來的連線」這個事實，只剩「是否經你授權」需要判斷。
+        // 功能規格 M2-06 寫的是 Warning，但規格自己對 Fail 的定義是「明確異常」——
+        // 有人連進你的電腦，事實本身並不模糊。
+        //
+        // 且若判 Warning，單一項目只有 10 分，在 0–19 的「低」區間裡永遠出不去。
         return Build(
-            CheckStatus.Warning,
-            $"{tool.DisplayName} 有 {connections.Count} 筆**連入**紀錄 —— 代表曾有人從外部連進這台電腦。{range}"
-            + "逐筆核對是否為你本人或你授權的人所為。",
-            "有不認得的連線請立即保存本報告，移除該工具，並在乾淨裝置上更改遊戲與信箱密碼。",
+            CheckStatus.Fail,
+            $"{tool.DisplayName} 有 {connections.Count} 筆**連入**紀錄 —— 曾有人從外部連進這台電腦。{range}"
+            + "逐筆核對是否為你本人或你授權的人所為。若不是，代表他人能隨時操作你的電腦，"
+            + "即使紫P 是正版、密碼沒外流，對方也能在你自己登入遊戲時取走一切。",
+            "有不認得的連線請立即保存本報告，移除該工具，並在**另一台乾淨裝置**上更改遊戲與信箱密碼。",
             evidence);
     }
 

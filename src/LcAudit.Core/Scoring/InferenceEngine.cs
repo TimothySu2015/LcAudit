@@ -25,7 +25,8 @@ public sealed class InferenceEngine : IInferenceEngine
         {
             results.Add(new Inference("R1",
                 "假紫P／釣魚安裝檔 — 端點已不可信。本工具其餘結果均不應全然採信，建議直接重灌並在乾淨裝置上更改密碼。",
-                fakePurple));
+                fakePurple,
+                RiskLevel.Extreme));
         }
 
         // R2｜防毒遭主動停用。需 M3-10 與 M3-11 同時成立。
@@ -34,7 +35,8 @@ public sealed class InferenceEngine : IInferenceEngine
         {
             results.Add(new Inference("R2",
                 "防毒遭主動停用（排除清單與即時防護關閉同時成立）— 高度可疑，這是惡意程式落地後的典型動作。",
-                defenderDisabled));
+                defenderDisabled,
+                RiskLevel.High));
         }
 
         // R3｜RDP 遭爆破或帳號被建立。需「有遠端登入跡證」且「有帳號異動」同時成立。
@@ -44,7 +46,8 @@ public sealed class InferenceEngine : IInferenceEngine
         {
             results.Add(new Inference("R3",
                 "RDP 遭爆破或帳號被建立 — 遠端登入跡證與本機帳號異動同時出現。",
-                [.. remoteLogon, .. accountChange]));
+                [.. remoteLogon, .. accountChange],
+                RiskLevel.High));
         }
 
         // R4｜第三方遠端工具遭入侵。限 M1 全數未命中 —— 若紫P 本身就有問題，
@@ -53,9 +56,13 @@ public sealed class InferenceEngine : IInferenceEngine
         var m1Clean = !findings.Any(f => f.Module == "M1" && f.IsHit);
         if (remoteTools.Count > 0 && m1Clean)
         {
+            // 這正是「紫P 是正版，但電腦被植入 AnyDesk」的情境。
+            // 加總只有 10 分（單一 High 的 Warning）會落在「低」，但結論明明是端點已被他人存取。
             results.Add(new Inference("R4",
-                "第三方遠端工具遭入侵 — 紫P 本身未見異常，但偵測到遠端工具的連入紀錄。",
-                remoteTools));
+                "第三方遠端工具遭入侵 — 紫P 本身未見異常，但偵測到遠端工具的連入紀錄。"
+                + "攻擊者不需要動紫P，只要能遠端操作你的電腦，就能在你自己登入遊戲時取走一切。",
+                remoteTools,
+                RiskLevel.High));
         }
 
         // R5｜全數未命中。

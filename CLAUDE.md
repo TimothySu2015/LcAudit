@@ -175,6 +175,14 @@ Severity 即分數：`Critical=40, High=20, Medium=10, Low=5, Info=0`（enum 底
 
 推論引擎（S-06）依 M1/M2/M3 命中組合輸出「最可能的入侵途徑」，決策表見功能規格 §6 FR-S。
 
+**推論結論會替風險等級設下限**（`Inference.MinimumLevel`，R1→極高、R2/R3/R4→高）。這是規格外的補強，理由是規格的加總式評分有個會致命的洞：
+
+> 紫P 完全正版、電腦被植入 AnyDesk 且有連入紀錄 —— 單一 High 項目加起來 10 分，落在「低」(0–19)，**結束代碼 0**。報告會一邊在推論結論寫「第三方遠端工具遭入侵」，一邊在最顯眼的卡片標「低風險」，自動化腳本則判定沒問題。
+
+單一 High 的 Warning 在數學上永遠出不了「低」區間。加總表達不了「組合的意義大於各項相加」，而那正是 S-06 的職責，所以它的結論必須能回饋到等級。等級被拉高時 `AuditSummary.LevelRaisedBy` 會說明原因，報告一定要顯示 —— 否則使用者看到「10 分但高風險」會覺得工具在亂報，反而不信其他發現。
+
+連帶調整：M2-06/07 的「有實際連入紀錄」從 `Warning` 改為 `Fail`。規格寫的是 Warning，但規格自己對 `Fail` 的定義是「明確異常」—— 有人連進你的電腦，這個事實並不模糊，只剩「是否經你授權」需要人工判斷，而報告已附上逐筆時間與來源。「只是裝了但沒有連入紀錄」仍維持 `Warning`。
+
 ## 建置與測試
 
 `Directory.Build.props`、`Directory.Packages.props`（CPM 已啟用）、`global.json`（釘 SDK 10.0.203）皆已就位。**新增專案時 `PackageReference` 不可寫 `Version`**，版本一律加到 `Directory.Packages.props`。新專案要記得 `dotnet sln add`。

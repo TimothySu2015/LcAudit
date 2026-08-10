@@ -44,7 +44,9 @@ public sealed class AuditRunner
                 : await check.ExecuteAsync(context, ct).ConfigureAwait(false));
         }
 
-        var score = _scorer.Score(findings);
+        // 推論必須先跑 —— 成立的推論會替風險等級設下限，評分需要吃到這個結果。
+        var inferences = _inferenceEngine.Infer(findings);
+        var score = _scorer.Score(findings, inferences);
 
         var summary = new AuditSummary
         {
@@ -52,7 +54,8 @@ public sealed class AuditRunner
             RawScore = score.RawScore,
             Level = score.Level,
             CriticalHits = score.CriticalHits,
-            Inferences = _inferenceEngine.Infer(findings),
+            LevelRaisedBy = score.LevelRaisedBy,
+            Inferences = inferences,
             SkippedModules = context.SkippedModules,
         };
 

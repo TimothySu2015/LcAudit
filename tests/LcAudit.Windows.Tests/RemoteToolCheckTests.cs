@@ -60,7 +60,10 @@ public sealed class RemoteToolCheckTests
 
         var finding = await new M2_06_AnyDeskCheck(scanner).ExecuteAsync(Context(), default);
 
-        Assert.Equal(CheckStatus.Warning, finding.Status);
+        // 「裝了」是 Warning，「有人真的連進來過」是 Fail —— 兩者的確定性差很多。
+        // 且若判 Warning，單一項目只有 10 分，在 0–19 的「低」區間裡永遠出不去。
+        Assert.Equal(CheckStatus.Fail, finding.Status);
+        Assert.Equal(20, finding.Score);
         Assert.Contains("連入", finding.Description);
         Assert.Contains(finding.Evidence, e => e.Value.Contains("1234567890", StringComparison.Ordinal));
     }
@@ -86,7 +89,7 @@ public sealed class RemoteToolCheckTests
 
         var finding = await new M2_07_TeamViewerCheck(scanner).ExecuteAsync(Context(), default);
 
-        Assert.Equal(CheckStatus.Warning, finding.Status);
+        Assert.Equal(CheckStatus.Fail, finding.Status);
         Assert.Contains(finding.Evidence, e => e.Key.StartsWith("2026-01-05", StringComparison.Ordinal));
     }
 

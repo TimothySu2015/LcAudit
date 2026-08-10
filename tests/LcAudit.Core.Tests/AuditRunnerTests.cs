@@ -52,8 +52,10 @@ public sealed class AuditRunnerTests
         // TC-08：跳過的項目計 0 分，而非重新計算滿分比例。
         // 若採相對計分，這裡的 M3-01 被跳過後 M1-01 會變成「滿分的 100%」，
         // 反而拉高分數 —— 那才是危險的誤導。
+        // 用 M1-05 而非 M1-01 —— 後者會觸發推論規則 R1（假紫P），
+        // 把等級拉到「極高」而蓋掉這裡要驗證的分數對應
         var result = await Runner(
-            FakeCheck.Returning("M1-01", CheckStatus.Fail, Severity.High),
+            FakeCheck.Returning("M1-05", CheckStatus.Fail, Severity.High),
             FakeCheck.Returning("M3-01", CheckStatus.Fail, Severity.Critical)).RunAsync(Context("M3"));
 
         Assert.Equal(20, result.Summary.Score);

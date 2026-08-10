@@ -88,9 +88,12 @@ public sealed class ConsoleReporter(IAnsiConsole console)
     {
         var lines = new List<string>();
 
-        if (summary.CriticalHits > 0)
+        // 分數低但等級高時，一定要解釋原因，否則使用者會覺得工具在亂報
+        if (summary.LevelRaisedBy is { } reason)
         {
-            lines.Add($"[red]命中 {summary.CriticalHits} 項 Critical，等級已強制為「極高」。[/]");
+            lines.Add($"[red]{Markup.Escape(reason)}，等級已強制為「"
+                      + $"{Markup.Escape(ReportPresentation.LevelText(summary.Level))}」——"
+                      + "不受總分影響。[/]");
         }
 
         if (summary.RawScore > summary.Score)

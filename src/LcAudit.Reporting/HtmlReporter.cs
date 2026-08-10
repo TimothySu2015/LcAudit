@@ -139,9 +139,11 @@ public sealed class HtmlReporter
         sb.AppendLine($"<h2>風險等級</h2>");
         sb.AppendLine($"<div class=\"score\">{Esc(ReportPresentation.LevelText(summary.Level))}　{summary.Score} / 100</div>");
 
-        if (summary.CriticalHits > 0)
+        // 分數低但等級高時，一定要解釋原因，否則使用者會覺得工具在亂報
+        if (summary.LevelRaisedBy is { } reason)
         {
-            sb.AppendLine($"<div>命中 {summary.CriticalHits} 項 Critical，等級已強制為「極高」。</div>");
+            sb.AppendLine($"<div>{Esc(reason)}，等級已強制為「"
+                          + $"{Esc(ReportPresentation.LevelText(summary.Level))}」——不受總分影響。</div>");
         }
 
         if (summary.RawScore > summary.Score)
