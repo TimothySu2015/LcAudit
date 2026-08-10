@@ -16,11 +16,11 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # 依 global.json 安裝指定的 SDK 版本，確保與本機一致（技術設計 §6.2 reproducible build）
       - name: 安裝 .NET SDK
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
 

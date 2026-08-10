@@ -20,10 +20,10 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: 安裝 .NET SDK
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
 
@@ -79,7 +79,7 @@ jobs:
 
       # 建置來源證明，讓下載者能驗證這個執行檔確實是由本 repo 的這次 workflow 產生的
       - name: 產生建置來源證明
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: publish/LcAudit.exe
 
