@@ -174,6 +174,7 @@ static ServiceCollection BuildServices()
 
     services.AddSingleton<IWindowsEventLog, WindowsEventLog>();
     services.AddSingleton<IRemoteToolScanner, RemoteToolScanner>();
+    services.AddSingleton<IZoneIdentifierReader, ZoneIdentifierReader>();
     services.AddSingleton<IRegistryReader, RegistryReader>();
     services.AddSingleton<ILocalAccountSource, LocalAccountSource>();
 
@@ -186,6 +187,12 @@ static ServiceCollection BuildServices()
     RegisterCheck<M1_00_InstallPathCheck>(services);
     RegisterCheck<M1_01_SignatureStatusCheck>(services);
     RegisterCheck<M1_02_SignerIdentityCheck>(services);
+    RegisterCheck<M1_03_CertificateChainCheck>(services);
+    RegisterCheck<M1_04_DownloadSourceCheck>(services);
+    RegisterCheck<M1_05_UnsignedModulesCheck>(services);
+    RegisterCheck<M1_06_SuspiciousFileNameCheck>(services);
+    RegisterCheck<M1_07_InstallLocationCheck>(services);
+    RegisterCheck<M1_08_InstallTimeCorrelationCheck>(services);
     RegisterCheck<M2_00_LogClearedCheck>(services);
     RegisterCheck<M2_01_RemoteInteractiveLogonCheck>(services);
     RegisterCheck<M2_02_NetworkLogonCheck>(services);

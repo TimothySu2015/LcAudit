@@ -17,7 +17,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 已端到端驗證：正常簽章但簽章者非 NCSOFT → M1-02 Fail(40) → 強制「極高」→ 結束代碼 3；改造正版（竄改）→ M1-01 BadDigest + M1-02 皆 Fail(80)。
 
-**M3 已完成 10/13**：M3-01～06、08、10、11、13。**尚未實作**：M1-03～M1-08、M3-07（排程工作，需 `ITaskService` COM）、M3-09（防火牆，需 `INetFwPolicy2` COM）、M3-12（WMI 事件訂閱）、M4。
+**M1 全數完成（9 項）、M2 全數完成（11 項）、M3 完成 10/13**。**尚未實作**：M3-07（排程工作，需 `ITaskService` COM）、M3-09（防火牆，需 `INetFwPolicy2` COM）、M3-12（WMI 事件訂閱，需 `System.Management`）、M4（4 項，需 `GetExtendedTcpTable`）。
+
+M1 已端到端驗證：`plaync.com.evil.tw` 被 M1-04 擋下（後綴比對）、`PurpIe.exe` 被 M1-06 抓到（同形字元）、ADS 讀取正常。
 
 全量掃描實測約 7 秒（含 150 個服務的簽章驗證），遠低於 NFR-01 的 3 分鐘上限。簽章驗證務必用路徑做快取 —— svchost 代管的服務全指向同一個執行檔。CLI 參數已全部接通（`--days`／`--purple-path`／`--output`／`--format`／`--skip-module`）。
 
@@ -197,6 +199,10 @@ CLI 參數：`--days`(90) `--purple-path` `--output`(.\LcAudit-Report) `--format
 | **M3-05「非預期成員」的三級判定** | 內建帳號（RID 500/512/518/519）＋目前使用者＋`--expect-admin` → 預期；非預期的**網域**成員 → `Warning`；非預期的**本機**帳號 → `Fail` | 規格只寫「非預期 → Fail」。但這是 Critical(40)、命中即強制「極高」—— 公司配發的電腦本機 Administrators 含網域群組是常態，一律判 Fail 對企業使用者是純誤報。家用機出現第二個本機管理員才確實高度可疑 |
 | **M3-13 非敏感的 hosts 自訂對應** | 判 `Pass` 但完整列出證據，**不判 Warning** | 規格只定義「含遊戲／入口網站導向 → Fail」。本項是 Critical，一個 Warning 就是 20 分；廣告阻擋等自訂對應很常見，為此讓正常機器背 20 分不合理 |
 | **M3-04「近期建立的帳號」** | 用 `C:\Users\<name>` 的 `CreationTime` 推估，報告明確註明是推估值 | 本機帳號沒有可靠的建立時間來源，登錄檔與 `NetUserGetInfo` 都不提供 |
+| **M1-06 檔名相似度演算法** | 三條各自可解釋的規則：同形字元折疊後碰撞、正版名稱＋複製後綴、編輯距離 ≤2 且長度差 ≤2 | 規格只舉了 `PurpIe`／`Purple_new` 兩例。純用編輯距離會把安裝目錄裡正常的 `PurpleUpdater.exe` 掃進來；長度差限制就是為了擋這個 |
+| **M1-08「時間接近」的視窗** | ±24 小時 | 攻擊者取得遠端存取後未必立刻動手，窗口再放大會把無關的日常遠端使用掃進來 |
+| **M1-03 時間戳的判定方式** | 不另外剖析 counter-signature；`WinVerifyTrust` 回 `Valid` 但憑證已過期 ⇒ 有時間戳 | Authenticode 的規則本來就是「憑證過期但簽章當下有合法時間戳 → 仍有效」，可直接從驗證結果反推，省下一整套 Crypt32 剖析 |
+| **M1-08 不從 M2 取結果** | 自行查詢終端服務工作階段記錄 | M1-08 依編號在 M2 之前執行，且模組間刻意不共享狀態。該記錄檔不需提權，未提權時仍能完成關聯 |
 
 `ICheck` 比技術設計 §3 多了 `Title` / `Severity` / `Source` 三個唯讀屬性 —— `SafeCheckDecorator` 與 `AuditRunner` 需要這些靜態中繼資料，才能在檢查項「沒能執行」時仍組出完整的 `Finding`。
 
@@ -205,7 +211,6 @@ CLI 參數：`--days`(90) `--purple-path` `--output`(.\LcAudit-Report) `--format
 | 期限 | 議題 |
 |---|---|
 | 隨時 | **紫P 主程式檔名與安裝路徑需實機確認** —— `PurpleExecutableLocator.CandidateNames`（`Purple.exe`／`PurpleLauncher.exe`／`NCLauncher.exe`／`NCLauncherU.exe`）、`PurplePathProbe` 的常見路徑清單、`GameProcessDetector.KnownNames` 全部是推測值，未經實機驗證 |
-| M1-06 實作前 | **檔名相似度**演算法（同形字元表 `l/I/1`、`O/0`、`rn/m`，或 Levenshtein 門檻）；**M1-08「時間接近」**的視窗大小 |
 | M2 其餘項實作前 | **M2-08 遠端工具偵測清單**（功能規格附錄 B 有起點，但版本更迭快）；**M2-04 TerminalServices 記錄檔在未啟用時的行為** —— `WindowsEventLog` 已把 `EventLogNotFoundException` 轉為 `FileNotFoundException`，但 M2-04 應判 `Inconclusive` 而非讓它變成一般例外 |
 | M3-09 實作前 | **「近期新增」無法實作** —— `INetFwPolicy2` 不提供規則建立時間，登錄檔 `FirewallRules` 的 `LastWriteTime` 是整個 key 的而非逐條。判定條件需改寫，例如退化為「列出所有非 Microsoft 簽章程式的 Inbound Allow 規則」 |
 
