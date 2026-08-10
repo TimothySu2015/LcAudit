@@ -13,4 +13,8 @@
     <ProjectReference Include="..\LcAudit.Core\LcAudit.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="LcAudit.Core.Tests" />
+  </ItemGroup>
+
 </Project>

@@ -12,12 +12,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - `LcAudit.Core` — 領域模型、評分、推論引擎、純判定邏輯（網域白名單、DN 解析）
 - `LcAudit.Windows` — `Interop/`（WinTrust、Crypt32、Kernel32、SafeHandles）、`Sources/`（AuthenticodeVerifier、ProcessInspector、PurplePathProbe、GameProcessDetector、WindowsEventLog、EventQueries）、`Checks/M1/`（M1-00～M1-02）、`Checks/M2/`（M2-00 記錄檔清除偵測、M2-01～M2-03）
-- `LcAudit.Reporting` — `ConsoleReporter`（Spectre.Console）、`ReportPresentation`。**Json / Html 尚未實作**
+- `LcAudit.Reporting` — `ConsoleReporter`（Spectre.Console）、`HtmlReporter`（§8.3 自包含單檔）、`JsonReporter`（§8.2）、`ReportWriter`（檔名與編碼）、`ReportPresentation`
 - `LcAudit.Cli` — `System.CommandLine` 2.0.10 GA API + DI + pre-flight，結束代碼已接風險等級
 
 已端到端驗證：正常簽章但簽章者非 NCSOFT → M1-02 Fail(40) → 強制「極高」→ 結束代碼 3；改造正版（竄改）→ M1-01 BadDigest + M1-02 皆 Fail(80)。
 
-**尚未實作**：M1-03～M1-08、M2-04～M2-10、M3、M4、Json/Html 報告、`--format`／`--output` 參數雖已解析但未使用。
+**尚未實作**：M1-03～M1-08、M2-04～M2-10、M3、M4。CLI 參數已全部接通（`--days`／`--purple-path`／`--output`／`--format`／`--skip-module`）。
 
 **注意 M2 的驗證缺口**：M2 各項的「有資料」路徑只用假資料做過單元測試 —— 本機開發時未提權，實際讀 Security 記錄的路徑（具名欄位是否對得上 4624 的實際結構）尚未以真實事件驗證過。首次以系統管理員執行時要重點確認帳號、IP、LogonType 有正確填入。
 
@@ -50,6 +50,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 網域白名單必須是**後綴比對**（`host == allowed || host.EndsWith("." + allowed)`，取 `uri.IdnHost` 正規化），**不可** `Contains`／`-like "*plaync*"`（`plaync.com.evil.tw` 會誤判為安全）。
 - `WinVerifyTrust` 第一次呼叫後**必做**第二次 `WTD_STATEACTION_CLOSE`，否則洩漏 handle。
 - `IPGlobalProperties.GetActiveTcpConnections()` 不回傳 PID，M4-01/M4-03 必須用 `GetExtendedTcpTable`。
+
+## 報告輸出的兩條鐵律
+
+**1. HTML 報告的所有插入值都必須經過 `HtmlReporter.Esc()`，無一例外。** 報告內容大量來自攻擊者可控的資料 —— Security 4625 的 `TargetUserName` 是嘗試登入者自己填的、檔名可以任意命名、憑證 Subject 也是。不跳脫的話，一個叫 `<script>…</script>.exe` 的檔案或帳號就能讓報告在被害者開啟時執行指令碼，稽核工具的產出變成攻擊載體。
+
+報告刻意**不含任何 JavaScript**（折疊用原生 `<details>`），也不引用任何外部資源 —— 對應 §8.3 自包含要求與 NFR-06 離線要求。`HtmlReporterTests` 有測試守住這三點。寫測試時注意：跳脫後的 `onerror=` 以純文字出現是**正常且無害**的，正確的斷言是「原始字串不得原樣出現」而非「不得含某子字串」。
+
+**2. 寫檔只能經由 `ReportWriter`，且只能寫在 `--output` 目錄下**（NFR-03）。UTF-8 with BOM（NFR-08）。`--format Console` 時連目錄都不建立。
 
 ## 事件記錄的兩個坑（M2 實作前必讀，皆已實測確認）
 

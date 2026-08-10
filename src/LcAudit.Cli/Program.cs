@@ -39,12 +39,19 @@ var skipModuleOption = new Option<string[]>("--skip-module")
     AllowMultipleArgumentsPerToken = true,
 };
 
+var formatOption = new Option<ReportFormat>("--format")
+{
+    Description = "報告格式：Console / Json / Html / All",
+    DefaultValueFactory = _ => ReportFormat.All,
+};
+
 var root = new RootCommand("天堂：經典版 帳號安全稽核工具")
 {
     daysOption,
     purplePathOption,
     outputOption,
     skipModuleOption,
+    formatOption,
 };
 
 root.SetAction((ParseResult parseResult, CancellationToken ct) =>
@@ -56,6 +63,7 @@ root.SetAction((ParseResult parseResult, CancellationToken ct) =>
         OutputPath = parseResult.GetValue(outputOption)!,
         SkipModules = (parseResult.GetValue(skipModuleOption) ?? [])
             .ToHashSet(StringComparer.OrdinalIgnoreCase),
+        Format = parseResult.GetValue(formatOption),
     };
 
     return RunAsync(options, ct);
@@ -104,10 +112,46 @@ static async Task<int> RunAsync(AuditOptions options, CancellationToken ct)
         Findings = result.Findings,
     };
 
-    new ConsoleReporter(console).Write(report);
+    if (options.Format.HasFlag(ReportFormat.Console))
+    {
+        new ConsoleReporter(console).Write(report);
+    }
+
+    WriteReportFiles(console, provider, report, options);
 
     // 結束代碼即風險等級（功能規格 §7.1）。這是 Console App 的對外契約。
     return (int)report.Summary.Level;
+}
+
+static void WriteReportFiles(
+    IAnsiConsole console,
+    IServiceProvider provider,
+    AuditReport report,
+    AuditOptions options)
+{
+    // 寫檔失敗不該讓已完成的掃描結果化為烏有 —— Console 已經輸出過了。
+    try
+    {
+        var written = provider.GetRequiredService<ReportWriter>()
+                              .Write(report, options.OutputPath, options.Format);
+
+        if (written.Count == 0)
+        {
+            return;
+        }
+
+        console.WriteLine();
+        foreach (var path in written)
+        {
+            console.MarkupLine($"[green]已輸出報告：[/]{Markup.Escape(path)}");
+        }
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+    {
+        console.WriteLine();
+        console.MarkupLine($"[red]報告檔寫入失敗：[/]{Markup.Escape(ex.Message)}");
+        console.MarkupLine("[grey]Console 輸出的結果仍然有效，可手動複製保存。[/]");
+    }
 }
 
 static ServiceCollection BuildServices()
@@ -127,6 +171,11 @@ static ServiceCollection BuildServices()
     services.AddSingleton<IInferenceEngine, InferenceEngine>();
 
     services.AddSingleton<IWindowsEventLog, WindowsEventLog>();
+
+    // Reporting
+    services.AddSingleton<HtmlReporter>();
+    services.AddSingleton<JsonReporter>();
+    services.AddSingleton<ReportWriter>();
 
     // Checks —— 每個都包一層 SafeCheckDecorator（NFR-04）
     RegisterCheck<M1_00_InstallPathCheck>(services);

@@ -1,3 +1,5 @@
+using LcAudit.Reporting;
+
 namespace LcAudit.Cli;
 
 /// <summary>CLI 參數（功能規格 §7）。</summary>
@@ -10,4 +12,6 @@ public sealed record AuditOptions
     public required DirectoryInfo OutputPath { get; init; }
 
     public required IReadOnlySet<string> SkipModules { get; init; }
+
+    public required ReportFormat Format { get; init; }
 }
