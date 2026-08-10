@@ -189,27 +189,47 @@ public sealed class M1RemainingCheckTests
     private static M1_04_DownloadSourceCheck Source(ZoneIdentifier? zone)
         => new(new StubZoneReader(zone));
 
-    [Fact]
-    public void M1_04官方來源判Pass()
-        => Assert.Equal(CheckStatus.Pass, Source(null)
-            .Evaluate(new ZoneIdentifier(3, "https://downloads.plaync.com/x.exe", null), "x").Status);
 
     [Fact]
-    public void M1_04非官方來源判Fail()
+    public void M1_04官方安裝檔下載主機判Pass()
+        // 官方下載頁指向 ncupdate.com；漏收這個網域會讓所有從官網下載的人被誤判
+        => Assert.Equal(CheckStatus.Pass, Source(null).Evaluate(
+            new ZoneIdentifier(3,
+                "https://gs-purple-inst.download.ncupdate.com/Purple/PURPLE_Installer_2_26_803_19.exe",
+                "https://lineageclassic.plaync.com/zh-tw/download/index"), "x").Status);
+
+    [Fact]
+    public void M1_04仿冒網域判Fail()
     {
+        // 網域字串裡嵌了官方網域卻不是它的子網域 —— 只有刻意仿冒一種解釋
         var finding = Source(null)
             .Evaluate(new ZoneIdentifier(3, "https://plaync.com.evil.tw/x.exe", null), "x");
 
         Assert.Equal(CheckStatus.Fail, finding.Status);
         Assert.Equal(40, finding.Score);
+        Assert.Contains("仿冒", finding.Description);
     }
 
     [Fact]
-    public void M1_04ReferrerUrl不合格也判Fail()
+    public void M1_04不在白名單但與官方無關者判Warning而非Fail()
     {
-        // 技術設計 §4.5：HostUrl 與 ReferrerUrl 皆須通過，任一不通過即 Fail
+        // 白名單是靜態清單、必定不完整（官方隨時可能換 CDN）。
+        // 漏收的代價不該由使用者承擔，更不該對從官網下載的人喊「假紫P，去重灌」。
+        var finding = Source(null)
+            .Evaluate(new ZoneIdentifier(3, "https://some-mirror.example.com/x.exe", null), "x");
+
+        Assert.Equal(CheckStatus.Warning, finding.Status);
+        Assert.Contains("不一定代表有問題", finding.Description);
+    }
+
+    [Fact]
+    public void M1_04ReferrerUrl為仿冒網域也判Fail()
+    {
+        // 技術設計 §4.5：HostUrl 與 ReferrerUrl 皆須檢查
         var finding = Source(null).Evaluate(
-            new ZoneIdentifier(3, "https://downloads.plaync.com/x.exe", "https://evil.tw/page"), "x");
+            new ZoneIdentifier(3,
+                "https://gs-purple-inst.download.ncupdate.com/x.exe",
+                "https://plaync.com.evil.tw/page"), "x");
 
         Assert.Equal(CheckStatus.Fail, finding.Status);
     }

@@ -63,20 +63,36 @@ public sealed class M1_04_DownloadSourceCheck(IZoneIdentifierReader zoneReader) 
         evidence.Add(new Evidence("HostUrl", zone.HostUrl ?? "(未記錄)"));
         evidence.Add(new Evidence("ReferrerUrl", zone.ReferrerUrl ?? "(未記錄)"));
 
-        // 兩個 URL 都要通過白名單；任一不通過即 Fail（技術設計 §4.5）
-        var badUrls = new[] { zone.HostUrl, zone.ReferrerUrl }
+        var urls = new[] { zone.HostUrl, zone.ReferrerUrl }
             .Where(url => !string.IsNullOrWhiteSpace(url))
-            .Where(url => !DownloadHostValidator.IsAllowedDownloadHost(url))
+            .Select(url => (Url: url!, Verdict: DownloadHostValidator.Classify(url)))
             .ToList();
 
-        if (badUrls.Count > 0)
+        // 仿冒網域最優先 —— 這是唯一沒有第二種解釋的情況
+        var impersonating = urls.Where(u => u.Verdict == DownloadSourceVerdict.Impersonation).ToList();
+        if (impersonating.Count > 0)
         {
             return Build(
                 CheckStatus.Fail,
-                $"主程式的下載來源不是官方網域：{string.Join("、", badUrls)}。"
-                + $"官方網域只有 {string.Join("、", DownloadHostValidator.AllowedHosts)}。"
-                + "從非官方來源取得的紫P 極可能被植入後門。",
+                $"主程式的下載來源是**仿冒官方的網域**：{string.Join("、", impersonating.Select(u => u.Url))}。"
+                + "這類網址把官方網域嵌在字串中間，乍看很像官網，實際的網域卻是別人的 ——"
+                + "例如 plaync.com.evil.tw 真正的網域是 evil.tw。",
                 "立即停止使用此電腦登入遊戲，保存本報告後重灌系統，並在乾淨裝置上更改密碼。",
+                evidence);
+        }
+
+        // 不在白名單中。白名單是靜態清單、必定不完整（官方隨時可能換 CDN），
+        // 因此判 Warning 而非 Fail —— 清單漏收的代價不該由使用者承擔，
+        // 更不該對從官網下載的人喊「假紫P，去重灌」。
+        var unknown = urls.Where(u => u.Verdict is DownloadSourceVerdict.Unknown or DownloadSourceVerdict.Invalid).ToList();
+        if (unknown.Count > 0)
+        {
+            return Build(
+                CheckStatus.Warning,
+                $"主程式的下載來源不在本工具已知的官方網域清單中：{string.Join("、", unknown.Select(u => u.Url))}。"
+                + $"（已知清單：{string.Join("、", DownloadHostValidator.AllowedHosts)}）"
+                + "官方會更換下載主機，清單不保證完整，所以這**不一定代表有問題**。",
+                "請比對官方下載頁公布的網址。若不相符，從官網重新下載安裝。",
                 evidence);
         }
 
