@@ -1,0 +1,32 @@
+# Build 產出
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+artifacts/
+publish/
+*.user
+*.suo
+
+# IDE
+.vs/
+.vscode/
+.idea/
+
+# 測試與覆蓋率
+TestResults/
+*.coverage
+*.trx
+coverage*.json
+coverage*.xml
+
+# 工具自身的執行產出（絕不可進版控 —— 內含主機名稱、IP、帳號等個資）
+LcAudit-Report/
+LcAudit-*.json
+LcAudit-*.html
+
+# TestAssets 中的簽章測試檔由指令碼產生，不進版控
+tests/LcAudit.TestAssets/generated/
+
+# Claude Code
+.claude/

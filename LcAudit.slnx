@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/LcAudit.Core/LcAudit.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/LcAudit.Core.Tests/LcAudit.Core.Tests.csproj" />
+  </Folder>
+</Solution>
