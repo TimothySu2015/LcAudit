@@ -12,7 +12,7 @@ public sealed class ConsoleReporter(IAnsiConsole console)
 
         WriteFindings(report.Findings);
         WriteSummary(report.Summary);
-        WriteForensicNotice();
+        WriteForensicNotice(report);
     }
 
     private void WriteFindings(IReadOnlyList<Finding> findings)
@@ -114,7 +114,7 @@ public sealed class ConsoleReporter(IAnsiConsole console)
         return string.Join(Environment.NewLine, lines);
     }
 
-    private void WriteForensicNotice()
+    private void WriteForensicNotice(AuditReport report)
     {
         console.WriteLine();
         console.MarkupLine("[bold]取證保存提醒[/]");
@@ -122,6 +122,12 @@ public sealed class ConsoleReporter(IAnsiConsole console)
         console.MarkupLine("[grey]2. 建議另行匯出原始事件記錄：[/]");
         console.MarkupLine("[grey]   wevtutil epl Security .\\Security-backup.evtx[/]");
         console.MarkupLine("[grey]3. 報案時需提供：時間點、來源 IP、遊戲內損失清單、官方 1:1 客服單號。[/]");
+
+        console.WriteLine();
+        console.MarkupLine(
+            $"[grey]LcAudit v{Markup.Escape(report.ToolVersion)}"
+            + $"　掃描於 {Markup.Escape(report.ScannedAt.ToString("yyyy-MM-dd HH:mm:ss zzz"))}"
+            + $"　主機 {Markup.Escape(report.Host.ComputerName)}[/]");
     }
 
     private static Color ParseColour(string name) => name switch

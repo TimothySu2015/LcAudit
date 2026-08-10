@@ -11,6 +11,7 @@ public sealed class HtmlReporterTests
 
     private static AuditReport Report(params Finding[] findings) => new()
     {
+        ToolVersion = "9.9.9-test",
         ScannedAt = ScanTime,
         IsElevated = true,
         Host = new HostInfo { ComputerName = "PC-01", OsVersion = "Windows 11", TimeZone = "Taipei Standard Time" },
@@ -151,6 +152,25 @@ public sealed class HtmlReporterTests
         var html = new HtmlReporter().Render(Report(Finding()));
 
         Assert.Contains("沒有帶時間點的跡證", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void 報告帶有工具版本供事後追溯()
+    {
+        // 報告可能在事發數週後才被翻出來比對，屆時工具早已更新過 ——
+        // 沒有版本號就無法判斷這份報告當時漏掉了哪些檢查項
+        var html = new HtmlReporter().Render(Report(Finding()));
+
+        Assert.Contains("9.9.9-test", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void 版本號也會被跳脫()
+    {
+        // 版本字串來自組件中繼資料，理論上安全，但沒有理由在這裡破例
+        var html = new HtmlReporter().Render(Report(Finding()) with { ToolVersion = "<script>x</script>" });
+
+        Assert.DoesNotContain("<script>x</script>", html, StringComparison.Ordinal);
     }
 
     [Fact]

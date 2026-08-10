@@ -14,6 +14,7 @@ public sealed class ReportWriterTests : IDisposable
 
     private static AuditReport Report(string computerName = "PC-01") => new()
     {
+        ToolVersion = "9.9.9-test",
         ScannedAt = new DateTimeOffset(2026, 8, 10, 14, 30, 5, TimeSpan.FromHours(8)),
         IsElevated = true,
         Host = new HostInfo { ComputerName = computerName, OsVersion = "Windows 11", TimeZone = "Taipei" },
@@ -132,6 +133,15 @@ public sealed class ReportWriterTests : IDisposable
 
         Assert.Contains("主程式數位簽章狀態", json, StringComparison.Ordinal);
         Assert.DoesNotContain("\\u4E3B", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Json含工具版本與報告格式版本()
+    {
+        var json = new JsonReporter().Render(Report());
+
+        Assert.Contains("\"toolVersion\": \"9.9.9-test\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"schemaVersion\": \"1.0\"", json, StringComparison.Ordinal);
     }
 
     [Fact]

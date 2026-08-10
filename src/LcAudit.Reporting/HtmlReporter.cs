@@ -40,7 +40,7 @@ public sealed class HtmlReporter
         AppendHostInfo(sb, report);
         AppendTimeline(sb, report.Findings);
         AppendFindings(sb, report.Findings);
-        AppendForensicNotice(sb);
+        AppendForensicNotice(sb, report);
 
         sb.AppendLine("</body>");
         sb.AppendLine("</html>");
@@ -120,7 +120,8 @@ public sealed class HtmlReporter
         sb.AppendLine($"""
             <div class="meta">掃描時間 {Esc(report.ScannedAt.ToString("yyyy-MM-dd HH:mm:ss zzz"))}
             ｜主機 {Esc(report.Host.ComputerName)}
-            ｜{(report.IsElevated ? "已以系統管理員執行" : "未提權執行（部分項目無法判定）")}</div>
+            ｜{(report.IsElevated ? "已以系統管理員執行" : "未提權執行（部分項目無法判定）")}
+            ｜LcAudit v{Esc(report.ToolVersion)}</div>
             """);
     }
 
@@ -272,7 +273,7 @@ public sealed class HtmlReporter
     }
 
     /// <summary>底部固定區塊：取證保存提醒（功能規格 §10）。</summary>
-    private static void AppendForensicNotice(StringBuilder sb)
+    private static void AppendForensicNotice(StringBuilder sb, AuditReport report)
     {
         sb.AppendLine("""
             <h2>取證保存提醒</h2>
@@ -286,8 +287,13 @@ public sealed class HtmlReporter
             <li>報案時需一併提供：時間點、來源 IP、遊戲內損失清單、官方 1:1 客服單號。</li>
             </ol>
             </div>
+            """);
+
+        sb.AppendLine($"""
             <footer>
-            本報告由 LcAudit 產生，全程唯讀蒐證，未對受檢系統做任何修改。<br>
+            本報告由 <strong>LcAudit v{Esc(report.ToolVersion)}</strong> 於
+            {Esc(report.ScannedAt.ToString("yyyy-MM-dd HH:mm:ss zzz"))} 產生
+            （報告格式版本 {Esc(report.SchemaVersion)}）。全程唯讀蒐證，未對受檢系統做任何修改。<br>
             檢查項目判定為「通過」不代表未被入侵 —— 具管理員權限的攻擊者可清除事件記錄，
             rootkit 等級的隱藏也無法以使用者模式 API 偵測。
             </footer>

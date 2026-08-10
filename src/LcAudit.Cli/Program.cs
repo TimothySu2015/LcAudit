@@ -78,7 +78,7 @@ static async Task<int> RunAsync(AuditOptions options, CancellationToken ct)
 {
     var console = AnsiConsole.Console;
 
-    console.Write(new Rule("[bold]天堂：經典版 帳號安全稽核工具[/]").LeftJustified());
+    console.Write(new Rule($"[bold]天堂：經典版 帳號安全稽核工具[/] [grey]v{ToolVersion.Current}[/]").LeftJustified());
     console.WriteLine();
 
     var services = BuildServices();
@@ -103,6 +103,7 @@ static async Task<int> RunAsync(AuditOptions options, CancellationToken ct)
 
     var report = new AuditReport
     {
+        ToolVersion = ToolVersion.Current,
         ScannedAt = DateTimeOffset.Now,
         IsElevated = isElevated,
         Host = new HostInfo
