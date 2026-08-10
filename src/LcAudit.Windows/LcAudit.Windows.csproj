@@ -6,6 +6,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- .NET Core 起 System.Diagnostics.Eventing.Reader 不在 BCL 內建，必須加此套件 -->
+    <PackageReference Include="System.Diagnostics.EventLog" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\LcAudit.Core\LcAudit.Core.csproj" />
   </ItemGroup>
 

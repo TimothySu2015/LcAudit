@@ -11,13 +11,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **進度：四個專案皆已建立，`--purple-path` 的 M1 最小版本可實際執行**，161 個測試全綠。
 
 - `LcAudit.Core` — 領域模型、評分、推論引擎、純判定邏輯（網域白名單、DN 解析）
-- `LcAudit.Windows` — `Interop/`（WinTrust、Crypt32、Kernel32、SafeHandles）、`Sources/`（AuthenticodeVerifier、ProcessInspector、PurplePathProbe、GameProcessDetector）、`Checks/M1/`（M1-00、M1-01、M1-02）
+- `LcAudit.Windows` — `Interop/`（WinTrust、Crypt32、Kernel32、SafeHandles）、`Sources/`（AuthenticodeVerifier、ProcessInspector、PurplePathProbe、GameProcessDetector、WindowsEventLog、EventQueries）、`Checks/M1/`（M1-00～M1-02）、`Checks/M2/`（M2-00 記錄檔清除偵測、M2-01～M2-03）
 - `LcAudit.Reporting` — `ConsoleReporter`（Spectre.Console）、`ReportPresentation`。**Json / Html 尚未實作**
 - `LcAudit.Cli` — `System.CommandLine` 2.0.10 GA API + DI + pre-flight，結束代碼已接風險等級
 
 已端到端驗證：正常簽章但簽章者非 NCSOFT → M1-02 Fail(40) → 強制「極高」→ 結束代碼 3；改造正版（竄改）→ M1-01 BadDigest + M1-02 皆 Fail(80)。
 
-**尚未實作**：M1-03～M1-08、M2、M3、M4、Json/Html 報告、`--format`／`--output` 參數雖已解析但未使用。下一步依技術設計為階段 3（事件記錄 + M2）。
+**尚未實作**：M1-03～M1-08、M2-04～M2-10、M3、M4、Json/Html 報告、`--format`／`--output` 參數雖已解析但未使用。
+
+**注意 M2 的驗證缺口**：M2 各項的「有資料」路徑只用假資料做過單元測試 —— 本機開發時未提權，實際讀 Security 記錄的路徑（具名欄位是否對得上 4624 的實際結構）尚未以真實事件驗證過。首次以系統管理員執行時要重點確認帳號、IP、LogonType 有正確填入。
 
 **測試素材不進版控**：整合測試的 PE 檔在執行當下產生（`TestAssets.cs`），避免防毒對 repo 誤判、避免故意損壞的檔案被誤用。**不可用 `notepad.exe`／`kernel32.dll` 當已簽章素材** —— 那是目錄簽章(Catalog)，複本不受保護，`WinVerifyTrust` 走 `WTD_CHOICE_FILE` 會判為未簽章（技術設計 §7.1 建議用 notepad.exe 複本，那是錯的）。要用內嵌簽章的檔案，如 `%ProgramFiles%\dotnet\dotnet.exe`。
 
@@ -48,6 +50,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 網域白名單必須是**後綴比對**（`host == allowed || host.EndsWith("." + allowed)`，取 `uri.IdnHost` 正規化），**不可** `Contains`／`-like "*plaync*"`（`plaync.com.evil.tw` 會誤判為安全）。
 - `WinVerifyTrust` 第一次呼叫後**必做**第二次 `WTD_STATEACTION_CLOSE`，否則洩漏 handle。
 - `IPGlobalProperties.GetActiveTcpConnections()` 不回傳 PID，M4-01/M4-03 必須用 `GetExtendedTcpTable`。
+
+## 事件記錄的兩個坑（M2 實作前必讀，皆已實測確認）
+
+**1. `TolerateQueryErrors = true` 會讓權限不足變成靜默失敗。** 未提權查 Security 記錄時，`EventLogReader` 建得起來、`ReadEvent()` 直接回 `null`，**不拋任何例外**。於是「讀不到記錄檔」與「期間內沒有事件」完全無法區分，M2 會全部報「通過」—— 工具在讀不到資料的情況下宣稱沒有遠端登入，這比沒有這個檢查還糟。
+
+修法：`WindowsEventLog.Query` 進入查詢前先呼叫 `EventLogSession.GlobalSession.GetLogInformation()` 明確探測可讀性，它會確實拋 `UnauthorizedAccessException`。不要改用 `TolerateQueryErrors = false` —— 那會讓單筆損毀記錄毀掉整批查詢。回歸測試見 `WindowsEventLogIntegrationTests.未提權讀取Security必須拋例外而非靜默回空`。
+
+**2. XPath 的比較運算子必須是字面的 `<=`，不可寫成 XML 跳脫的 `&lt;=`。** `EventLogQuery` 收的是純 XPath 運算式而非 XML，跳脫版會被拒為「指定的查詢無效」。而且這個錯誤會被 `SafeCheckDecorator` 吞成 `Inconclusive`，極難察覺。`EventQueries` 有測試守住。
 
 ## 反作弊共存規則（M1-00 / M4-01 / M4-03 實作前必讀）
 
@@ -106,7 +116,7 @@ tests/LcAudit.TestAssets/       已簽章／未簽章／竄改的測試檔
 | 全程唯讀 | 除 `--output` 目錄外不得寫入任何路徑；不得修改檔案時間戳；不做任何修復／清除／隔離 |
 | 完全離線 | 不得發出任何網路請求。`fdwRevocationChecks = WTD_REVOKE_NONE`，`dwProvFlags |= WTD_CACHE_ONLY_URL_RETRIEVAL`；M4-04 反查用內建靜態清單，不做 DNS |
 | 降級不中斷 | 任一檢查項失敗只標 `Inconclusive`，不影響其餘項目 |
-| 效能 | 完整掃描 < 3 分鐘；事件查詢 `MaxEvents` 預設 5000；**不要對每筆事件呼叫 `ToXml()`**，用 `EventLogPropertySelector` 具名 XPath |
+| 效能 | 完整掃描 < 3 分鐘；事件查詢 `MaxEvents` 預設 5000；**不要對每筆事件呼叫 `ToXml()`**，用 `EventLogPropertySelector` 具名 XPath；篩選一律下推到 XPath，不要撈回來再用 C# 過濾（4624 動輒數萬筆） |
 | 中文 | `InvariantGlobalization=false`（報告與路徑含繁中，TC-09）；報告檔輸出 UTF-8 with BOM；Console 輸出開頭設 `Console.OutputEncoding = Encoding.UTF8`，否則舊版主控台顯示繁中會亂碼 |
 | 未提權可跑 | 未以系統管理員執行時不得直接結束；Security log 相關項標 `Inconclusive`，其餘照常，並於 Console 首行警示（TC-02） |
 | 不碰遊戲 | 記憶體、封包、遊戲檔案完整性一律不觸碰（涉及反作弊機制） |
@@ -157,6 +167,8 @@ CLI 參數：`--days`(90) `--purple-path` `--output`(.\LcAudit-Report) `--format
 | **S-06「全數 Pass」的認定** | 有 `Inconclusive` 時改用 R5-P 保留語氣 | 「沒檢查成功」不等於「檢查過沒問題」，混為一談會給出不實的安全感 |
 | **DN 的 O= 欄位比對** | 比對 OID `2.5.4.10`，非 `FriendlyName` | FriendlyName 依平台與地區設定而異，Linux CI 上可能拿不到 `"O"` |
 | **多值 RDN** | 跳過該 RDN 繼續找，不拋例外 | 技術設計 §9-3 待實測，先確保不讓整個檢查爆掉 |
+| **M2-02 私有網段清單** | RFC1918 + loopback + **CGNAT `100.64/10`** + link-local `169.254/16` + IPv6 ULA `fc00::/7` + IPv6 link-local；`-`／空字串／`0.0.0.0`／`::` 獨立為 `Unspecified` 不計入 | 見 `PrivateAddressClassifier`。漏掉 CGNAT 會對大量使用電信 NAT 的正常使用者誤報 `Fail`(20 分)；4624 本機登入時 `IpAddress` 常是 `-`，不特別處理會被當成公網 |
+| **M2 系統帳號排除** | 帳號結尾 `$`、`ANONYMOUS LOGON`、`SYSTEM`、`LOCAL SERVICE`、`NETWORK SERVICE`、`-`、空值一律排除 | 見 `LogonRecord.IsSystemAccount`。不排除的話 M2-02 會對每台正常的網域機器噴 Fail |
 
 `ICheck` 比技術設計 §3 多了 `Title` / `Severity` / `Source` 三個唯讀屬性 —— `SafeCheckDecorator` 與 `AuditRunner` 需要這些靜態中繼資料，才能在檢查項「沒能執行」時仍組出完整的 `Finding`。
 
@@ -166,7 +178,7 @@ CLI 參數：`--days`(90) `--purple-path` `--output`(.\LcAudit-Report) `--format
 |---|---|
 | 隨時 | **紫P 主程式檔名與安裝路徑需實機確認** —— `PurpleExecutableLocator.CandidateNames`（`Purple.exe`／`PurpleLauncher.exe`／`NCLauncher.exe`／`NCLauncherU.exe`）、`PurplePathProbe` 的常見路徑清單、`GameProcessDetector.KnownNames` 全部是推測值，未經實機驗證 |
 | M1-06 實作前 | **檔名相似度**演算法（同形字元表 `l/I/1`、`O/0`、`rn/m`，或 Levenshtein 門檻）；**M1-08「時間接近」**的視窗大小 |
-| 階段 3 前 | **M2-02 私有網段清單** —— 至少涵蓋 RFC1918、CGNAT `100.64/10`、link-local `169.254/16`、loopback、IPv6 ULA `fc00::/7`；4624 的 `IpAddress` 常出現 `-`／空字串／`::1`，未排除會直接誤判成 `Fail` |
+| M2 其餘項實作前 | **M2-08 遠端工具偵測清單**（功能規格附錄 B 有起點，但版本更迭快）；**M2-04 TerminalServices 記錄檔在未啟用時的行為** —— `WindowsEventLog` 已把 `EventLogNotFoundException` 轉為 `FileNotFoundException`，但 M2-04 應判 `Inconclusive` 而非讓它變成一般例外 |
 | 階段 4 前 | **M3-03/04/05「非預期成員」的基線** —— 規格從未定義。M3-05 是 Critical(40)、命中即強制「極高」，基線不明會讓裝過 SQL Server／Docker 或有第二管理員帳號的正常機器狂噴極高風險。需預設白名單 + 參數補充<br>**M3-09「近期新增」無法實作** —— `INetFwPolicy2` 不提供規則建立時間，登錄檔 `FirewallRules` 的 `LastWriteTime` 是整個 key 的。判定條件需改寫<br>**M3-04「近期建立的帳號」** —— 同樣無可靠來源，只能用 `C:\Users\<name>` 的 `CreationTime` 推估，報告須註明是推估值 |
 
 ## 已知待驗證項目

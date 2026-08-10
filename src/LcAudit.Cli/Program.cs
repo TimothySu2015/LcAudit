@@ -7,6 +7,7 @@ using LcAudit.Core.Pipeline;
 using LcAudit.Core.Scoring;
 using LcAudit.Reporting;
 using LcAudit.Windows.Checks.M1;
+using LcAudit.Windows.Checks.M2;
 using LcAudit.Windows.Sources;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -125,10 +126,16 @@ static ServiceCollection BuildServices()
     services.AddSingleton<IRiskScorer, RiskScorer>();
     services.AddSingleton<IInferenceEngine, InferenceEngine>();
 
+    services.AddSingleton<IWindowsEventLog, WindowsEventLog>();
+
     // Checks —— 每個都包一層 SafeCheckDecorator（NFR-04）
     RegisterCheck<M1_00_InstallPathCheck>(services);
     RegisterCheck<M1_01_SignatureStatusCheck>(services);
     RegisterCheck<M1_02_SignerIdentityCheck>(services);
+    RegisterCheck<M2_00_LogClearedCheck>(services);
+    RegisterCheck<M2_01_RemoteInteractiveLogonCheck>(services);
+    RegisterCheck<M2_02_NetworkLogonCheck>(services);
+    RegisterCheck<M2_03_LogonFailureBurstCheck>(services);
 
     services.AddSingleton<AuditRunner>();
 
