@@ -17,6 +17,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\LcAudit.Core\LcAudit.Core.csproj" />
+    <!-- Reporting 也是 net10.0 跨平台，其純顯示邏輯一併在此測試 -->
+    <ProjectReference Include="..\..\src\LcAudit.Reporting\LcAudit.Reporting.csproj" />
   </ItemGroup>
 
 </Project>

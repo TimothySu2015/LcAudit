@@ -8,13 +8,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **實作形式：C# / .NET 10 Console App（`net10.0-windows`, win-x64），單一執行檔發佈。** 這是唯一的實作方向 —— 不做 GUI、不做服務、不做 Web。使用者的操作方式就是開一個終端機、跑 `LcAudit.exe` 帶參數，看 Console 輸出並拿到報告檔。
 
-**進度：階段 1、2 已完成**（技術設計 §8 的六階段），139 個測試全綠。
+**進度：四個專案皆已建立，`--purple-path` 的 M1 最小版本可實際執行**，161 個測試全綠。
 
 - `LcAudit.Core` — 領域模型、評分、推論引擎、純判定邏輯（網域白名單、DN 解析）
-- `LcAudit.Windows` — `Interop/`（WinTrust、Crypt32、SafeHandles）、`Sources/AuthenticodeVerifier`、`Checks/M1/`（M1-01、M1-02）
-- `LcAudit.Reporting` / `LcAudit.Cli` **尚未建立**
+- `LcAudit.Windows` — `Interop/`（WinTrust、Crypt32、Kernel32、SafeHandles）、`Sources/`（AuthenticodeVerifier、ProcessInspector、PurplePathProbe、GameProcessDetector）、`Checks/M1/`（M1-00、M1-01、M1-02）
+- `LcAudit.Reporting` — `ConsoleReporter`（Spectre.Console）、`ReportPresentation`。**Json / Html 尚未實作**
+- `LcAudit.Cli` — `System.CommandLine` 2.0.10 GA API + DI + pre-flight，結束代碼已接風險等級
 
-下一步是階段 3（事件記錄 + M2）。M1 其餘項（M1-00 路徑探測、M1-03～M1-08）也還沒做 —— 目前 M1-01/M1-02 靠 `AuditContext.PurpleInstallPath`，沒有 M1-00 填值就一律 `Inconclusive`。
+已端到端驗證：正常簽章但簽章者非 NCSOFT → M1-02 Fail(40) → 強制「極高」→ 結束代碼 3；改造正版（竄改）→ M1-01 BadDigest + M1-02 皆 Fail(80)。
+
+**尚未實作**：M1-03～M1-08、M2、M3、M4、Json/Html 報告、`--format`／`--output` 參數雖已解析但未使用。下一步依技術設計為階段 3（事件記錄 + M2）。
 
 **測試素材不進版控**：整合測試的 PE 檔在執行當下產生（`TestAssets.cs`），避免防毒對 repo 誤判、避免故意損壞的檔案被誤用。**不可用 `notepad.exe`／`kernel32.dll` 當已簽章素材** —— 那是目錄簽章(Catalog)，複本不受保護，`WinVerifyTrust` 走 `WTD_CHOICE_FILE` 會判為未簽章（技術設計 §7.1 建議用 notepad.exe 複本，那是錯的）。要用內嵌簽章的檔案，如 `%ProgramFiles%\dotnet\dotnet.exe`。
 
@@ -161,7 +164,8 @@ CLI 參數：`--days`(90) `--purple-path` `--output`(.\LcAudit-Report) `--format
 
 | 期限 | 議題 |
 |---|---|
-| 階段 2 前 | **M1-06 檔名相似度**演算法（同形字元表 `l/I/1`、`O/0`、`rn/m`，或 Levenshtein 門檻）；**M1-08「時間接近」**的視窗大小 |
+| 隨時 | **紫P 主程式檔名與安裝路徑需實機確認** —— `PurpleExecutableLocator.CandidateNames`（`Purple.exe`／`PurpleLauncher.exe`／`NCLauncher.exe`／`NCLauncherU.exe`）、`PurplePathProbe` 的常見路徑清單、`GameProcessDetector.KnownNames` 全部是推測值，未經實機驗證 |
+| M1-06 實作前 | **檔名相似度**演算法（同形字元表 `l/I/1`、`O/0`、`rn/m`，或 Levenshtein 門檻）；**M1-08「時間接近」**的視窗大小 |
 | 階段 3 前 | **M2-02 私有網段清單** —— 至少涵蓋 RFC1918、CGNAT `100.64/10`、link-local `169.254/16`、loopback、IPv6 ULA `fc00::/7`；4624 的 `IpAddress` 常出現 `-`／空字串／`::1`，未排除會直接誤判成 `Fail` |
 | 階段 4 前 | **M3-03/04/05「非預期成員」的基線** —— 規格從未定義。M3-05 是 Critical(40)、命中即強制「極高」，基線不明會讓裝過 SQL Server／Docker 或有第二管理員帳號的正常機器狂噴極高風險。需預設白名單 + 參數補充<br>**M3-09「近期新增」無法實作** —— `INetFwPolicy2` 不提供規則建立時間，登錄檔 `FirewallRules` 的 `LastWriteTime` 是整個 key 的。判定條件需改寫<br>**M3-04「近期建立的帳號」** —— 同樣無可靠來源，只能用 `C:\Users\<name>` 的 `CreationTime` 推估，報告須註明是推估值 |
 

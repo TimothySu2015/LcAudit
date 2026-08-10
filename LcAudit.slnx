@@ -1,6 +1,8 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/LcAudit.Cli/LcAudit.Cli.csproj" />
     <Project Path="src/LcAudit.Core/LcAudit.Core.csproj" />
+    <Project Path="src/LcAudit.Reporting/LcAudit.Reporting.csproj" />
     <Project Path="src/LcAudit.Windows/LcAudit.Windows.csproj" />
   </Folder>
   <Folder Name="/tests/">
