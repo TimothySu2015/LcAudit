@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: 建置與測試
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 依 global.json 安裝指定的 SDK 版本，確保與本機一致（技術設計 §6.2 reproducible build）
+      - name: 安裝 .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: 還原相依套件
+        run: dotnet restore
+
+      # TreatWarningsAsErrors=true，警告即失敗
+      - name: 建置
+        run: dotnet build --configuration Release --no-restore
+
+      - name: 執行測試
+        run: dotnet test --configuration Release --no-build --verbosity normal

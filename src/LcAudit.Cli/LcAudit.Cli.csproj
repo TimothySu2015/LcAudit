@@ -7,6 +7,40 @@
     <AssemblyName>LcAudit</AssemblyName>
   </PropertyGroup>
 
+  <!-- 檔案屬性中的版本與說明。未簽章的工具至少要有完整的中繼資料，
+       否則在防毒與 SmartScreen 眼中更像來路不明的東西。 -->
+  <PropertyGroup>
+    <Version>1.0.0</Version>
+    <Product>LcAudit</Product>
+    <AssemblyTitle>天堂：經典版 帳號安全稽核工具</AssemblyTitle>
+    <Description>唯讀蒐集紫P 完整性、遠端存取跡證與持久化後門三類跡證，輸出風險評分與報告。</Description>
+    <Copyright>Copyright (c) 2026</Copyright>
+  </PropertyGroup>
+
+  <!-- 發佈為單一自包含執行檔：目標電腦不需要安裝 .NET 執行階段（技術設計 §6）。
+       只在 dotnet publish 時生效，不影響日常 dotnet build。 -->
+  <PropertyGroup>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+
+    <!-- 刻意設為 false，勿改回 true（技術設計 §6 寫的是 true）。
+         壓縮版單一檔會在執行時解壓到 %TEMP% 再載入 DLL —— 這個樣式與 dropper 型
+         惡意程式高度重疊。本工具又會列舉處理程序、讀 Security 記錄、查 Defender
+         排除清單，防毒誤判的機率遠高於反作弊誤判。 -->
+    <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
+
+    <!-- 不裁剪。System.Diagnostics.EventLog 與 COM interop 用到反射，
+         裁剪後的失效方式是執行期才炸，且只在特定檢查項上出現，極難察覺。 -->
+    <PublishTrimmed>false</PublishTrimmed>
+
+    <!-- reproducible build（技術設計 §6.2） -->
+    <Deterministic>true</Deterministic>
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />

@@ -25,9 +25,35 @@ LcAudit 在你的 Windows 電腦上蒐集三類跡證，幫你判斷被盜的可
 
 ## 開始使用
 
+### 下載
+
+到 [Releases](https://github.com/TimothySu2015/LcAudit/releases) 下載 `LcAudit.exe`。
+
+**不需要安裝 .NET，也不需要安裝任何東西** —— 執行階段已經打包進執行檔裡，下載後直接跑，跑完可以刪掉。
+
+### 先驗證檔案沒被動過手腳
+
+這是一個要在**可能已被入侵的電腦**上執行的安全工具，本身就是攻擊者眼中的高價值目標。請先確認你下載的是原版：
+
+```powershell
+Get-FileHash .\LcAudit.exe -Algorithm SHA256
+```
+
+把結果對照 Release 頁面上公布的雜湊值。若安裝了 [GitHub CLI](https://cli.github.com/)，也可以直接驗證建置來源：
+
+```powershell
+gh attestation verify .\LcAudit.exe --repo TimothySu2015/LcAudit
+```
+
+### 防毒可能會擋
+
+本工具未經程式碼簽章，行為又包含列舉處理程序、讀取安全性事件記錄、查詢 Defender 設定 —— 這些和惡意程式的樣式有重疊，可能觸發警告。
+
+**請不要因為想跑這個工具就關掉防毒。** 正確做法是先用上面的 SHA-256 與建置來源證明確認檔案無誤，再單獨放行這一個檔案。
+
 ### 需要什麼
 
-- Windows 10 或 Windows 11
+- Windows 10 或 Windows 11（64 位元）
 - 建議以**系統管理員身分**執行（差別很大，見下方說明）
 
 ### 執行前請先做兩件事
@@ -244,6 +270,8 @@ HTML 報告是**單一自包含檔案**，可以直接寄給別人或存檔，�
 
 ## 自行建置
 
+不信任別人編的執行檔是合理的 —— 你可以自己編。
+
 ```powershell
 git clone https://github.com/TimothySu2015/LcAudit.git
 cd LcAudit
@@ -254,11 +282,13 @@ dotnet test
 # 直接執行
 dotnet run --project src/LcAudit.Cli -- --days 90
 
-# 發佈成單一執行檔
-dotnet publish src/LcAudit.Cli -c Release -r win-x64 --self-contained
+# 發佈成單一自包含執行檔（輸出在 .\publish）
+dotnet publish src/LcAudit.Cli -c Release -o publish
 ```
 
-需要 [.NET 10 SDK](https://dotnet.microsoft.com/download)。
+需要 [.NET 10 SDK](https://dotnet.microsoft.com/download)。發佈設定已寫在專案檔中，不必額外指定參數。
+
+Release 頁面上的執行檔是由 GitHub Actions 用同一份設定自動建置的（見 `.github/workflows/release.yml`），沒有經過任何人的電腦。
 
 ---
 

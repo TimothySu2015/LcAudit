@@ -5,6 +5,7 @@ obj/
 [Rr]elease/
 artifacts/
 publish/
+*.exe
 *.user
 *.suo
 

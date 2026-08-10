@@ -1,0 +1,138 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '版本標籤，如 v1.0.0'
+        required: true
+
+permissions:
+  contents: write        # 建立 Release
+  id-token: write        # 產生建置來源證明
+  attestations: write
+
+jobs:
+  release:
+    name: 發佈單一執行檔
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安裝 .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: 建置
+        run: dotnet build --configuration Release
+
+      # 出貨前必須全綠。這是安全工具，帶著失敗的測試發佈沒有意義。
+      - name: 執行測試
+        run: dotnet test --configuration Release --no-build --verbosity normal
+
+      - name: 決定版本號
+        id: version
+        shell: pwsh
+        run: |
+          $tag = if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            '${{ github.event.inputs.tag }}'
+          } else {
+            '${{ github.ref_name }}'
+          }
+          $version = $tag -replace '^v', ''
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "版本標籤 $tag，組件版本 $version"
+
+      # 單一自包含執行檔：目標電腦不需要安裝 .NET 執行階段
+      - name: 發佈
+        shell: pwsh
+        run: |
+          dotnet publish src/LcAudit.Cli `
+            --configuration Release `
+            --output publish `
+            -p:Version=${{ steps.version.outputs.version }}
+
+      # 只留執行檔。pdb 是除錯符號，不該混進使用者下載的檔案裡。
+      - name: 整理輸出
+        shell: pwsh
+        run: |
+          Get-ChildItem publish -Exclude 'LcAudit.exe' | Remove-Item -Recurse -Force
+          Get-ChildItem publish | Format-Table Name, Length
+
+      # NFR-09：工具本身要能被驗證未遭竄改。
+      # 這是一個要在「可能已被入侵的主機」上執行的安全工具，本身就是高價值的供應鏈標的。
+      - name: 產生 SHA-256
+        id: hash
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash publish/LcAudit.exe -Algorithm SHA256).Hash
+          $size = "{0:N1}" -f ((Get-Item publish/LcAudit.exe).Length / 1MB)
+          "$hash  LcAudit.exe" | Set-Content publish/LcAudit.exe.sha256 -NoNewline
+          "sha256=$hash" >> $env:GITHUB_OUTPUT
+          "size=$size" >> $env:GITHUB_OUTPUT
+          Write-Host "SHA-256: $hash"
+
+      # 建置來源證明，讓下載者能驗證這個執行檔確實是由本 repo 的這次 workflow 產生的
+      - name: 產生建置來源證明
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: publish/LcAudit.exe
+
+      - name: 建立 Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = @"
+          ## 下載
+
+          下載 ``LcAudit.exe`` 即可執行，**目標電腦不需要安裝 .NET**。
+
+          | 項目 | 內容 |
+          |---|---|
+          | 檔案大小 | ${{ steps.hash.outputs.size }} MB |
+          | 適用系統 | Windows 10 / 11（64 位元） |
+
+          ## 執行方式
+
+          1. **關閉天堂與紫P**
+          2. 以**系統管理員身分**開啟 PowerShell 或命令提示字元
+          3. 執行：
+
+          ``````
+          .\LcAudit.exe
+          ``````
+
+          報告會輸出到 ``.\LcAudit-Report``。完整說明見 [README](https://github.com/${{ github.repository }}#readme)。
+
+          ## 驗證檔案未遭竄改
+
+          這是一個要在可能已被入侵的主機上執行的工具，請先驗證再使用：
+
+          ``````powershell
+          Get-FileHash .\LcAudit.exe -Algorithm SHA256
+          ``````
+
+          應為：
+
+          ``````
+          ${{ steps.hash.outputs.sha256 }}
+          ``````
+
+          本執行檔附有 GitHub 建置來源證明，可用 ``gh attestation verify .\LcAudit.exe --repo ${{ github.repository }}`` 驗證它確實由本 repo 建置。
+
+          ## 防毒軟體提醒
+
+          本工具未經程式碼簽章，且行為包含列舉處理程序、讀取安全性事件記錄、查詢 Defender 設定 —— 這些與惡意程式的樣式有重疊，可能觸發防毒警告。請用上方的 SHA-256 與建置來源證明確認檔案無誤後再放行。
+          "@
+
+          gh release create '${{ steps.version.outputs.tag }}' `
+            publish/LcAudit.exe `
+            publish/LcAudit.exe.sha256 `
+            --title 'LcAudit ${{ steps.version.outputs.tag }}' `
+            --notes $notes
