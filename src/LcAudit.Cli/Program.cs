@@ -9,6 +9,7 @@ using LcAudit.Reporting;
 using LcAudit.Windows.Checks.M1;
 using LcAudit.Windows.Checks.M2;
 using LcAudit.Windows.Checks.M3;
+using LcAudit.Windows.Checks.M4;
 using LcAudit.Windows.Sources;
 using LcAudit.Windows.Sources.RemoteTools;
 using Microsoft.Extensions.DependencyInjection;
@@ -176,6 +177,7 @@ static ServiceCollection BuildServices()
     services.AddSingleton<IRemoteToolScanner, RemoteToolScanner>();
     services.AddSingleton<IZoneIdentifierReader, ZoneIdentifierReader>();
     services.AddSingleton<IRegistryReader, RegistryReader>();
+    services.AddSingleton<ITcpConnectionSource, TcpConnectionSource>();
     services.AddSingleton<ILocalAccountSource, LocalAccountSource>();
 
     // Reporting
@@ -214,6 +216,10 @@ static ServiceCollection BuildServices()
     RegisterCheck<M3_10_DefenderExclusionsCheck>(services);
     RegisterCheck<M3_11_DefenderStatusCheck>(services);
     RegisterCheck<M3_13_HostsFileCheck>(services);
+    RegisterCheck<M4_01_PurpleConnectionsCheck>(services);
+    RegisterCheck<M4_02_ListeningPortsCheck>(services);
+    RegisterCheck<M4_03_UnsignedOutboundCheck>(services);
+    RegisterCheck<M4_04_KnownRemoteServiceCheck>(services);
 
     services.AddSingleton<AuditRunner>();
 

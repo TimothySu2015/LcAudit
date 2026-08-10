@@ -17,9 +17,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 已端到端驗證：正常簽章但簽章者非 NCSOFT → M1-02 Fail(40) → 強制「極高」→ 結束代碼 3；改造正版（竄改）→ M1-01 BadDigest + M1-02 皆 Fail(80)。
 
-**M1 全數完成（9 項）、M2 全數完成（11 項）、M3 完成 10/13**。**尚未實作**：M3-07（排程工作，需 `ITaskService` COM）、M3-09（防火牆，需 `INetFwPolicy2` COM）、M3-12（WMI 事件訂閱，需 `System.Management`）、M4（4 項，需 `GetExtendedTcpTable`）。
+**M1（9 項）、M2（11 項）、M4（4 項）全數完成，M3 完成 10/13。** 406 個測試全綠，完整掃描約 9 秒。
 
-M1 已端到端驗證：`plaync.com.evil.tw` 被 M1-04 擋下（後綴比對）、`PurpIe.exe` 被 M1-06 抓到（同形字元）、ADS 讀取正常。
+**尚未實作**：M3-07（排程工作，需 `ITaskService` COM）、M3-09（防火牆，需 `INetFwPolicy2` COM）、M3-12（WMI 事件訂閱，需 `System.Management`）。三者都需要新的相依，其餘功能皆已可用。
+
+M1 已端到端驗證：`plaync.com.evil.tw` 被 M1-04 擋下（後綴比對）、`PurpIe.exe` 被 M1-06 抓到（同形字元）、ADS 讀取正常。M4 的 `GetExtendedTcpTable` 已對真實連線表驗證（含 PID 與位元組順序轉換）。
 
 全量掃描實測約 7 秒（含 150 個服務的簽章驗證），遠低於 NFR-01 的 3 分鐘上限。簽章驗證務必用路徑做快取 —— svchost 代管的服務全指向同一個執行檔。CLI 參數已全部接通（`--days`／`--purple-path`／`--output`／`--format`／`--skip-module`）。
 
@@ -203,6 +205,7 @@ CLI 參數：`--days`(90) `--purple-path` `--output`(.\LcAudit-Report) `--format
 | **M1-08「時間接近」的視窗** | ±24 小時 | 攻擊者取得遠端存取後未必立刻動手，窗口再放大會把無關的日常遠端使用掃進來 |
 | **M1-03 時間戳的判定方式** | 不另外剖析 counter-signature；`WinVerifyTrust` 回 `Valid` 但憑證已過期 ⇒ 有時間戳 | Authenticode 的規則本來就是「憑證過期但簽章當下有合法時間戳 → 仍有效」，可直接從驗證結果反推，省下一整套 Crypt32 剖析 |
 | **M1-08 不從 M2 取結果** | 自行查詢終端服務工作階段記錄 | M1-08 依編號在 M2 之前執行，且模組間刻意不共享狀態。該記錄檔不需提權，未提權時仍能完成關聯 |
+| **M4-04 改判連線目標埠，不做 IP→網域反查** | 比對對外連線的**目標埠**與發起程序名稱 | 規格寫「反查已知遠端服務網域，對照內建靜態清單」。但不做 DNS 就無法把 IP 反查成網域，而這類服務全架在雲端、IP 段變動頻繁，內建 IP 清單無法負責任地維護 —— 給一份過期清單只會製造「檢查過了」的假象。改判目標埠是離線可靠的部分 |
 
 `ICheck` 比技術設計 §3 多了 `Title` / `Severity` / `Source` 三個唯讀屬性 —— `SafeCheckDecorator` 與 `AuditRunner` 需要這些靜態中繼資料，才能在檢查項「沒能執行」時仍組出完整的 `Finding`。
 
