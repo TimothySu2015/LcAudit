@@ -8,6 +8,7 @@ using LcAudit.Core.Scoring;
 using LcAudit.Reporting;
 using LcAudit.Windows.Checks.M1;
 using LcAudit.Windows.Checks.M2;
+using LcAudit.Windows.Checks.M3;
 using LcAudit.Windows.Sources;
 using LcAudit.Windows.Sources.RemoteTools;
 using Microsoft.Extensions.DependencyInjection;
@@ -173,6 +174,8 @@ static ServiceCollection BuildServices()
 
     services.AddSingleton<IWindowsEventLog, WindowsEventLog>();
     services.AddSingleton<IRemoteToolScanner, RemoteToolScanner>();
+    services.AddSingleton<IRegistryReader, RegistryReader>();
+    services.AddSingleton<ILocalAccountSource, LocalAccountSource>();
 
     // Reporting
     services.AddSingleton<HtmlReporter>();
@@ -194,6 +197,14 @@ static ServiceCollection BuildServices()
     RegisterCheck<M2_08_OtherRemoteToolsCheck>(services);
     RegisterCheck<M2_09_RdpBitmapCacheCheck>(services);
     RegisterCheck<M2_10_LockUnlockTimelineCheck>(services);
+    RegisterCheck<M3_01_RdpEnabledCheck>(services);
+    RegisterCheck<M3_02_RdpPortCheck>(services);
+    RegisterCheck<M3_03_RemoteDesktopUsersCheck>(services);
+    RegisterCheck<M3_04_LocalAccountsCheck>(services);
+    RegisterCheck<M3_05_AdministratorsGroupCheck>(services);
+    RegisterCheck<M3_10_DefenderExclusionsCheck>(services);
+    RegisterCheck<M3_11_DefenderStatusCheck>(services);
+    RegisterCheck<M3_13_HostsFileCheck>(services);
 
     services.AddSingleton<AuditRunner>();
 
