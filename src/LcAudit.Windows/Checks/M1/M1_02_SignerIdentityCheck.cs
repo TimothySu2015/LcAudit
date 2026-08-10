@@ -70,11 +70,13 @@ public sealed class M1_02_SignerIdentityCheck(IAuthenticodeVerifier verifier) : 
                 evidence);
         }
 
-        if (!SignerNameValidator.IsExpectedOrganization(verdict.SignerOrganization))
+        var signer = SignerNameValidator.Classify(verdict.SignerOrganization);
+
+        if (signer == SignerVerdict.NotOfficial)
         {
             return Build(
                 CheckStatus.Fail,
-                $"簽章者組織為「{verdict.SignerOrganization}」，非官方的「{SignerNameValidator.ExpectedOrganization}」。"
+                $"簽章者組織為「{verdict.SignerOrganization}」，與 NCSOFT 無關。"
                 + "這是假紫P 最明確的特徵。",
                 "立即停止使用此電腦登入遊戲，保存本報告後重灌系統，並在乾淨裝置上更改密碼。",
                 evidence);
@@ -85,9 +87,24 @@ public sealed class M1_02_SignerIdentityCheck(IAuthenticodeVerifier verifier) : 
         {
             return Build(
                 CheckStatus.Fail,
-                $"簽章者組織相符，但簽章狀態為 {verdict.Trust} —— 憑證正確不代表簽章有效，"
+                $"簽章者組織與 NCSOFT 相符，但簽章狀態為 {verdict.Trust} —— 憑證正確不代表簽章有效，"
                 + "這正是把官方憑證塞進偽造檔案的手法會呈現的樣子。",
                 "視同假紫P 處理，刪除現有安裝並重新下載。",
+                evidence);
+        }
+
+        // 含 NCSOFT 但不在已知清單中：很可能是尚未收錄的官方憑證變體。
+        // 官方在不同法人與年代用過多種組織名稱寫法（NCsoft Corp.、NCsoft…），
+        // 一律判 Fail 會把正版使用者嚇去重灌 —— 那是本工具最嚴重的失敗模式。
+        if (signer == SignerVerdict.LikelyOfficial)
+        {
+            return Build(
+                CheckStatus.Warning,
+                $"簽章有效，簽章者組織為「{verdict.SignerOrganization}」——"
+                + "含有 NCSOFT 但不在本工具已知的官方名稱清單中。"
+                + "官方在不同法人與年代使用過多種寫法，這**很可能是正版**，但本工具無法完全確認。",
+                "請比對官方網站公布的資訊，或回報這個組織名稱以便更新工具的白名單。"
+                + "在確認前，先不要視為已被入侵。",
                 evidence);
         }
 

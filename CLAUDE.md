@@ -55,7 +55,9 @@ M1 已端到端驗證：`plaync.com.evil.tw` 被 M1-04 擋下（後綴比對）�
 - 禁令不因此放寬：`CreateFromSignedFile` 的致命缺陷是**它根本不做任何驗證**，上面的竄改實測已足以證明。
 
 其他易錯點：
-- 簽章者比對必須解析 DN 取 `O=` 欄位比對 `"NCSOFT Corporation"`，**不可** `cert.Subject.Contains("NCSOFT")`（`CN=NCSOFT-Free-Launcher, O=Evil Ltd` 會通過）。
+- 簽章者比對必須解析 DN 取 `O=` 欄位，**不可** `cert.Subject.Contains("NCSOFT")`（`CN=NCSOFT-Free-Launcher, O=Evil Ltd` 會通過）。
+- **技術設計 §4.3 寫的 `"NCSOFT Corporation"` 是錯的**，且該值從未經實檔驗證。實際觀察到的官方憑證組織名稱是 `NCsoft Corp.`（韓國法人，`L=Seoul, C=KR`，SGTRUST CODE SIGNING CA）與 `NCsoft`（美國法人，`L=Austin, S=Texas, C=US`，VeriSign）—— 連大小寫都不同。同一發行者名下至少有 5 張憑證，字串不保證一致。若沿用原本的「完全相符＋區分大小寫」，**正版紫P 會被判 `Fail` → Critical → 極高，等於告訴乾淨的使用者「你被入侵了，去重灌」**。這是本工具最嚴重的失敗模式。
+- 因此 `SignerNameValidator.Classify()` 採三級判定：符合已知清單 → `Official`(Pass)；`O=` 含 `NCSOFT` 但不在清單 → `LikelyOfficial`(**Warning**)；不含 → `NotOfficial`(Fail)。放寬到「含 NCSOFT」不會重開 CN 陷阱 —— 仍然只看 `O=` 欄位，攻擊者需要 CA 簽發憑證給法定名稱含 NCSOFT 的公司，而 CA 會查驗登記文件。拿到新的實際值請加進 `KnownOfficialOrganizations`。
 - 網域白名單必須是**後綴比對**（`host == allowed || host.EndsWith("." + allowed)`，取 `uri.IdnHost` 正規化），**不可** `Contains`／`-like "*plaync*"`（`plaync.com.evil.tw` 會誤判為安全）。
 - `WinVerifyTrust` 第一次呼叫後**必做**第二次 `WTD_STATEACTION_CLOSE`，否則洩漏 handle。
 - `IPGlobalProperties.GetActiveTcpConnections()` 不回傳 PID，M4-01/M4-03 必須用 `GetExtendedTcpTable`。
