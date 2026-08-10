@@ -64,6 +64,29 @@ M1 已端到端驗證：`plaync.com.evil.tw` 被 M1-04 擋下（後綴比對）�
 - **功能規格的白名單漏了 `ncupdate.com`**。官方下載頁指向 `https://gs-purple-inst.download.ncupdate.com/Purple/PURPLE_Installer_*.exe`（已實測確認）。漏掉它的後果是：**任何人從官網下載紫P 都會被 M1-04 判 `Fail` → Critical → 極高**，也就是對絕大多數正常使用者喊「假紫P，建議重灌」。
 - 因此 `DownloadHostValidator.Classify()` 也改三級：正確後綴 → `Official`(Pass)；**網域字串嵌了官方網域卻不是其子網域** → `Impersonation`(**Fail**，`plaync.com.evil.tw` 這種只有仿冒一種解釋)；與官方無關 → `Unknown`(**Warning**)。白名單是靜態清單、必定不完整，官方隨時可能換 CDN —— 漏收的代價不該由使用者承擔。
 
+## 教訓：判定前提要拿真實資料驗證，不能只看規格
+
+第一份真實使用者報告（正版紫P、乾淨機器）被判為「極高／假紫P／建議重灌」，8 個命中項目中有 7 個是誤報。逐一檢討後歸納出三種前提錯誤：
+
+**1. 把「必然發生的事」判為可疑**
+- M1-04「沒有 MOTW」→ 主程式由安裝程式解壓產生，**從來就不帶 Zone.Identifier**；下載回來的安裝檔也多半裝完就刪。這對每個正常使用者都必定成立，判 `Warning` 等於全體誤報。已改判 `Inconclusive`，並改為優先在下載資料夾找 `PURPLE_Installer*.exe` 讀它的 MOTW。
+- M1-05「未簽章模組」→ 前提「官方紫P 的模組應全數具備 NCSOFT 簽章」根本是錯的。實測正版安裝 597 個模組中 105 個未簽章，全是 `Autofac.dll`／`AutoMapper.dll`／`CefSharp.*` 這類第三方 NuGet 套件。已改為只有 `BadDigest`（被竄改）才判 `Fail`，未簽章僅列為參考。
+
+**2. 判定範圍過寬**
+- `IsSuspiciousLocation` 原本含 `%APPDATA%`／`%LOCALAPPDATA%`／`%ProgramData%` → Teams、Discord、Lenovo Vantage 全中槍，**連 Windows Defender 自己都被標成可疑**。現在只認 `%TEMP%` 與下載資料夾；其餘改用 `IsUserWritableLocation`，必須同時未簽章才算可疑。
+- `IsUnsigned` 原本把 `Unknown`／`SecuritySettings`／`Expired` 都算成未簽章。那些是「**驗不出來**」不是「沒簽章」。
+- M1-06 的編輯距離長度差放寬到 2 → 官方元件 `purpleon.exe` 中槍（距離 2、長度差 2）。已收緊為 ≤1，並對檔名去重。
+- M2-04 未區分來源 → 把本機主控台登入當成遠端連入（實測 52 筆中遠端 0 筆）。現在以 `PrivateAddressClassifier` 判斷來源欄位能否解析為 IP，避免依賴「本機」/"LOCAL" 這種會隨系統語言變動的字串。
+- M3-06 未過濾副檔名 → `desktop.ini` 被當成啟動項。
+- M4-04 誤用 `GameProcessDetector.KnownNames` 當遠端工具清單 → **紫P 自己被判為「連向已知遠端服務」**。
+
+**3. 推論規則不分 Fail 與 Warning**
+- R1「假紫P，建議重灌」被 M1-04 的 `Warning` 觸發，而 M1-01/M1-02 明明都 Pass。**會叫人重灌的結論只能由 `Fail` 觸發。**
+- R4「遠端工具遭入侵」同理 —— 「裝了但沒有連入紀錄」是 Warning，不代表遭入侵。
+- R3「RDP 遭爆破」的兩個組成都是設計上只產出 Warning 的檢查項，正常使用公司 RDP 的機器必然命中。已拆為兩級：有 M2-02／M2-03 的爆破或公網登入跡證才敢說「遭爆破」（下限「高」），否則降為保留語氣的 R3-P（下限「中」）。
+
+**通則**：新增或修改判定條件前，先問「一台完全乾淨的機器上，這個條件會不會成立？」如果會，那它就不是異常的證據。有真實報告時務必拿來對照。
+
 ## 教訓：規格裡的「外部世界事實」必須查證
 
 把規格當 Ground Truth 是對的，但要分辨兩種內容：

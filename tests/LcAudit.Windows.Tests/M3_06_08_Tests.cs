@@ -79,7 +79,7 @@ public sealed class M3_06_08_Tests
         var finding = AutoStart().Evaluate([Entry("Temp", tempExe)]);
 
         Assert.Equal(CheckStatus.Warning, finding.Status);
-        Assert.Contains("位於暫存或使用者資料目錄", finding.Description);
+        Assert.Contains("位於暫存或下載目錄", finding.Description);
     }
 
     [Fact]
@@ -94,6 +94,41 @@ public sealed class M3_06_08_Tests
         Assert.StartsWith("⚠", finding.Evidence[0].Key, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// AppData／ProgramData 的已簽章項目不算可疑 —— 否則 Teams、Discord、
+    /// Lenovo Vantage、甚至 Windows Defender 自己都會中槍。
+    /// </summary>
+    [Theory]
+    [InlineData(Environment.SpecialFolder.LocalApplicationData)]
+    [InlineData(Environment.SpecialFolder.CommonApplicationData)]
+    public void M3_06使用者可寫入位置的已簽章項目判Pass(Environment.SpecialFolder folder)
+    {
+        var path = Path.Combine(Environment.GetFolderPath(folder), "App", "app.exe");
+
+        Assert.Equal(CheckStatus.Pass, AutoStart().Evaluate([Entry("App", path)]).Status);
+    }
+
+    [Fact]
+    public void M3_06無法判定簽章者不算未簽章()
+    {
+        // Unknown（未列於對照表的 HRESULT）代表「驗不出來」而非「沒簽章」。
+        // 實測 ms-teams.exe 就是 Unknown，不該因此被標為可疑。
+        var finding = AutoStart().Evaluate(
+            [Entry("Teams", @"C:\Program Files\Teams\ms-teams.exe", SignatureTrust.Unknown)]);
+
+        Assert.Equal(CheckStatus.Pass, finding.Status);
+    }
+
+    [Fact]
+    public void M3_06啟動資料夾只看會被執行的副檔名()
+    {
+        // desktop.ini 是資料夾外觀設定檔，每個啟動資料夾都有一份 ——
+        // 不排除的話每台機器都會多兩個假的可疑啟動項
+        Assert.DoesNotContain(".ini", M3_06_AutoStartCheck.StartupExtensions);
+        Assert.Contains(".exe", M3_06_AutoStartCheck.StartupExtensions);
+        Assert.Contains(".lnk", M3_06_AutoStartCheck.StartupExtensions);
+    }
+
     [Fact]
     public void M3_06未驗證簽章的項目不算未簽章()
     {
@@ -102,15 +137,6 @@ public sealed class M3_06_08_Tests
             [new AutoStartEntry("使用者啟動資料夾", "app.lnk", @"C:\x\app.lnk", null, null)]);
 
         Assert.Equal(CheckStatus.Pass, finding.Status);
-    }
-
-    [Fact]
-    public void M3_06說明要提醒正規軟體也會裝在AppData()
-    {
-        var finding = AutoStart().Evaluate(
-            [Entry("X", @"C:\x\x.exe", SignatureTrust.NoSignature)]);
-
-        Assert.Contains("Discord", finding.Description);
     }
 
     // ---- M3-08 ----

@@ -32,17 +32,56 @@ public sealed class M1_04_DownloadSourceCheck(IZoneIdentifierReader zoneReader) 
         ArgumentNullException.ThrowIfNull(context);
         ct.ThrowIfCancellationRequested();
 
+        // 先找下載回來的安裝檔 —— MOTW 只會在它身上。
+        //
+        // 主程式是安裝程式解壓出來的，**從來就不會有 Zone.Identifier**。
+        // 原本只檢查主程式，導致每一個正常使用者都必定被判 Warning，永遠不可能 Pass。
+        foreach (var installer in FindDownloadedInstallers())
+        {
+            if (zoneReader.Read(installer) is { } installerZone)
+            {
+                return ValueTask.FromResult(Evaluate(installerZone, installer));
+            }
+        }
+
         var executable = PurpleExecutableLocator.FindMainExecutable(context.PurpleInstallPath);
         if (executable is null)
         {
             return ValueTask.FromResult(Build(
                 CheckStatus.Inconclusive,
-                "未取得紫P 主程式路徑，無法檢查下載來源。",
+                "未取得紫P 主程式路徑，也找不到下載回來的安裝檔，無法檢查下載來源。",
                 "可用 --purple-path 手動指定安裝目錄後重新執行。",
                 []));
         }
 
         return ValueTask.FromResult(Evaluate(zoneReader.Read(executable), executable));
+    }
+
+    /// <summary>
+    /// 在下載資料夾中尋找紫P 安裝檔。
+    /// <para>
+    /// 官方安裝檔名為 <c>PURPLE_Installer_&lt;版本&gt;.exe</c>。
+    /// 使用者裝完通常會刪掉，所以找不到是常態而非異常。
+    /// </para>
+    /// </summary>
+    private static IEnumerable<string> FindDownloadedInstallers()
+    {
+        string[] folders =
+        [
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads"),
+            Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+        ];
+
+        foreach (var folder in folders.Where(Directory.Exists))
+        {
+            var options = new EnumerationOptions { IgnoreInaccessible = true };
+
+            foreach (var file in Directory.EnumerateFiles(folder, "PURPLE_Installer*.exe", options)
+                                          .OrderByDescending(File.GetCreationTime))
+            {
+                yield return file;
+            }
+        }
     }
 
     internal Finding Evaluate(ZoneIdentifier? zone, string filePath)
@@ -51,11 +90,20 @@ public sealed class M1_04_DownloadSourceCheck(IZoneIdentifierReader zoneReader) 
 
         if (zone is null)
         {
+            // 判 Inconclusive 而非 Warning。
+            //
+            // 「沒有 MOTW」在正常情況下是**必然**的：主程式由安裝程式解壓產生，
+            // 從來就不帶 Zone.Identifier；而下載回來的安裝檔多半裝完就被刪了。
+            // 此外複製到隨身碟、經網路磁碟機搬移、用某些壓縮工具解開，都會讓標記消失。
+            //
+            // 把必然發生的事判為「可疑」，等於對每個正常使用者誤報 —— 而且這一項是
+            // Critical，一個 Warning 就是 20 分，還會觸發「假紫P」推論。
             return Build(
-                CheckStatus.Warning,
-                "主程式沒有 Mark of the Web 記錄，無法得知下載來源。"
-                + "可能是正常解壓縮或安裝程式所致，也可能是攻擊者刻意剝除了來源標記。",
-                "若你記得是從官網下載的，可忽略；不確定的話建議從官網重新下載安裝。",
+                CheckStatus.Inconclusive,
+                "找不到下載來源標記（Mark of the Web），無法判定安裝檔從哪裡下載。"
+                + "這在正常情況下很常見 —— 安裝程式解壓出來的檔案本來就不帶這個標記，"
+                + "下載回來的安裝檔也多半裝完就刪了。**這不代表有問題。**",
+                "若要確認來源，可比對 M1-01／M1-02 的簽章結果 —— 那才是判斷正版與否的依據。",
                 evidence);
         }
 

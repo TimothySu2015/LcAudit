@@ -60,10 +60,22 @@ public sealed class FileNameSimilarityTests
     [Theory]
     [InlineData("PurpleUpdater.exe")]   // 長度差異大，屬正常的同系列程式
     [InlineData("PurpleCrashHandler.exe")]
+    [InlineData("purpleon.exe")]        // 官方安裝目錄裡的真實元件，實測曾被誤判
     [InlineData("unins000.exe")]
     [InlineData("vcredist.exe")]
     public void 安裝目錄的正常檔案不會被誤判(string fileName)
         => Assert.Empty(FileNameSimilarity.FindSuspicious([fileName], KnownGood));
+
+    [Fact]
+    public void 同一檔名重複出現時只列一次()
+    {
+        // 同一個檔名可能出現在多個版本子目錄。實測有一份報告把同一個
+        // purpleon.exe 重複列了 13 次。
+        var result = FileNameSimilarity.FindSuspicious(
+            ["PurpIe.exe", "PurpIe.exe", "PurpIe.exe"], KnownGood);
+
+        Assert.Single(result);
+    }
 
     [Fact]
     public void rn折疊為m()
@@ -234,13 +246,23 @@ public sealed class M1RemainingCheckTests
         Assert.Equal(CheckStatus.Fail, finding.Status);
     }
 
+    /// <summary>
+    /// <b>關鍵回歸測試。</b>
+    /// <para>
+    /// 「沒有 MOTW」在正常情況下是**必然**的：主程式由安裝程式解壓產生，
+    /// 從來就不帶 Zone.Identifier；下載回來的安裝檔也多半裝完就刪了。
+    /// 把必然發生的事判為可疑，等於對每個正常使用者誤報 —— 而且這一項是 Critical，
+    /// 一個 Warning 就是 20 分，還會觸發「假紫P，建議重灌」的推論。
+    /// </para>
+    /// </summary>
     [Fact]
-    public void M1_04沒有MOTW判Warning()
+    public void M1_04沒有MOTW判Inconclusive而非Warning()
     {
         var finding = Source(null).Evaluate(null, "x");
 
-        Assert.Equal(CheckStatus.Warning, finding.Status);
-        Assert.Equal(20, finding.Score);
+        Assert.Equal(CheckStatus.Inconclusive, finding.Status);
+        Assert.Equal(0, finding.Score);
+        Assert.Contains("這不代表有問題", finding.Description);
     }
 
     // ---- M1-05 未簽章模組 ----
@@ -250,18 +272,30 @@ public sealed class M1RemainingCheckTests
         => Assert.Equal(CheckStatus.Pass,
             new M1_05_UnsignedModulesCheck(new StubVerifier()).Evaluate([], 42).Status);
 
+    /// <summary>
+    /// 未簽章模組不計為異常。
+    /// <para>
+    /// 原本的前提「官方紫P 的模組應全數具備 NCSOFT 簽章」根本是錯的 ——
+    /// 實測一台正版安裝：597 個模組中有 105 個未簽章，清單裡是 Autofac.dll、
+    /// AutoMapper.dll、AWSSDK.dll、CefSharp.* 這些標準第三方 NuGet 套件。
+    /// 沒有任何真實應用程式會去簽自己捆綁的每一個開源相依套件。
+    /// </para>
+    /// </summary>
     [Fact]
-    public void M1_05有未簽章模組判Warning()
+    public void M1_05未簽章模組不計為異常但仍列出()
     {
         var finding = new M1_05_UnsignedModulesCheck(new StubVerifier())
-            .Evaluate([(@"C:\x\evil.dll", SignatureTrust.NoSignature)], 42);
+            .Evaluate([(@"C:\x\Autofac.dll", SignatureTrust.NoSignature)], 597);
 
-        Assert.Equal(CheckStatus.Warning, finding.Status);
-        Assert.Equal(10, finding.Score);
+        Assert.Equal(CheckStatus.Pass, finding.Status);
+        Assert.Equal(0, finding.Score);
+        Assert.Contains("很常見", finding.Description);
+        Assert.Contains(finding.Evidence, e => e.Value.Contains("Autofac.dll", StringComparison.Ordinal));
     }
 
+    /// <summary>被竄改才是明確訊號 —— 有人在簽章之後動過檔案。</summary>
     [Fact]
-    public void M1_05被竄改的模組會特別點出並排在最前()
+    public void M1_05被竄改的模組判Fail()
     {
         var finding = new M1_05_UnsignedModulesCheck(new StubVerifier()).Evaluate(
         [
@@ -269,8 +303,12 @@ public sealed class M1RemainingCheckTests
             (@"C:\x\b.dll", SignatureTrust.BadDigest),
         ], 42);
 
+        Assert.Equal(CheckStatus.Fail, finding.Status);
+        Assert.Equal(20, finding.Score);
         Assert.Contains("已被竄改", finding.Description);
         Assert.Contains("b.dll", finding.Evidence[0].Value);
+        // 未簽章的那個不該混進竄改清單
+        Assert.DoesNotContain(finding.Evidence, e => e.Value.Contains("a.dll", StringComparison.Ordinal));
     }
 
     [Fact]

@@ -95,31 +95,54 @@ public static class CommandLineParser
     }
 
     /// <summary>
-    /// 路徑是否位於惡意程式偏好的位置（功能規格 M3-06 的判定條件之一）。
+    /// 路徑是否位於**高風險**位置。
     /// <para>
-    /// 正規軟體會裝在 Program Files；落腳在 %TEMP%、%APPDATA%、下載資料夾的
-    /// 開機啟動項目，是 dropper 型惡意程式的典型樣式。
+    /// 只認 <c>%TEMP%</c> 與下載資料夾 —— 常駐程式落腳在這兩個地方沒有正當理由，
+    /// 那是 dropper 型惡意程式的典型樣式。
+    /// </para>
+    /// <para>
+    /// <b>刻意不含 <c>%APPDATA%</c>／<c>%LOCALAPPDATA%</c>／<c>%ProgramData%</c></b>
+    /// （功能規格 M3-06 有列 %APPDATA%）。實測一台乾淨機器的結果：Teams、Discord、
+    /// Lenovo Vantage 全部中槍，**連 Windows Defender 自己都被標成可疑**
+    /// （它的執行檔在 <c>%ProgramData%\Microsoft\Windows Defender\Platform\</c>）。
+    /// 稽核工具把防毒軟體標成可疑，使用者只會學會忽略這一項。
+    /// </para>
+    /// <para>
+    /// 那些位置改用 <see cref="IsUserWritableLocation"/> 判斷，僅在**同時未簽章**時才算可疑。
     /// </para>
     /// </summary>
     public static bool IsSuspiciousLocation(string? path)
+        => StartsWithAny(path,
+        [
+            Path.GetTempPath(),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads"),
+        ]);
+
+    /// <summary>
+    /// 路徑是否位於一般使用者就能寫入的位置。
+    /// <para>
+    /// 這裡有大量正規軟體（Discord、Teams、Spotify、各家 OEM 工具、Windows Defender），
+    /// 單獨出現不構成可疑 —— 必須搭配「未簽章」一起看才有意義。
+    /// </para>
+    /// </summary>
+    public static bool IsUserWritableLocation(string? path)
+        => StartsWithAny(path,
+        [
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+        ]);
+
+    private static bool StartsWithAny(string? path, IReadOnlyList<string?> roots)
     {
         if (string.IsNullOrWhiteSpace(path))
         {
             return false;
         }
 
-        string?[] suspiciousRoots =
-        [
-            Path.GetTempPath(),
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads"),
-            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-        ];
-
         var full = path.Trim();
 
-        return suspiciousRoots
+        return roots
             .Where(root => !string.IsNullOrWhiteSpace(root))
             .Any(root => full.StartsWith(root!, StringComparison.OrdinalIgnoreCase));
     }

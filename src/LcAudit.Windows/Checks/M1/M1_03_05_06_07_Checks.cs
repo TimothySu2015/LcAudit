@@ -177,28 +177,38 @@ public sealed class M1_05_UnsignedModulesCheck(IAuthenticodeVerifier verifier) :
             return Build(CheckStatus.Inconclusive, "安裝目錄中沒有可掃描的執行檔或模組。", null, []);
         }
 
-        if (unsigned.Count == 0)
+        var tampered = unsigned.Where(u => u.Trust == SignatureTrust.BadDigest).ToList();
+
+        // 被竄改才是明確訊號。
+        //
+        // 原本把「未簽章」也判為 Warning，前提是「官方紫P 的模組應全數具備 NCSOFT 簽章」——
+        // 但那句話根本是錯的。實測一台正版安裝：597 個模組中有 105 個未簽章，
+        // 清單裡是 Autofac.dll、AutoMapper.dll、AWSSDK.dll、CefSharp.* 這些標準第三方
+        // NuGet 套件。**沒有任何真實應用程式會去簽自己捆綁的每一個開源相依套件。**
+        //
+        // 未簽章模組因此只作為資訊列出，不計分；BadDigest（內容與簽章不符）才判 Fail。
+        if (tampered.Count > 0)
         {
-            return Build(CheckStatus.Pass, $"掃描 {scanned} 個模組，全部具備有效簽章。", null, []);
+            return Build(
+                CheckStatus.Fail,
+                $"掃描 {scanned} 個模組，其中 {tampered.Count} 個**檔案內容與簽章不符 —— 已被竄改**。"
+                + "這代表有人在簽章之後動過這些檔案。",
+                "立即停止使用此電腦登入遊戲，保存本報告後重灌系統，並在乾淨裝置上更改密碼。",
+                [.. tampered.Take(50).Select(u => new Evidence("⚠ 已竄改", $"{u.Path}（{u.Trust}）"))]);
         }
 
-        var tampered = unsigned.Count(u => u.Trust == SignatureTrust.BadDigest);
+        if (unsigned.Count == 0)
+        {
+            return Build(CheckStatus.Pass, $"掃描 {scanned} 個模組，沒有被竄改的檔案。", null, []);
+        }
 
         return Build(
-            CheckStatus.Warning,
-            $"掃描 {scanned} 個模組，其中 {unsigned.Count} 個未簽章或簽章無效"
-            + (tampered > 0 ? $"，並有 {tampered} 個**檔案內容與簽章不符（已被竄改）**" : string.Empty)
-            + "。官方紫P 的模組應全數具備 NCSOFT 簽章。",
-            tampered > 0
-                ? "有模組被竄改，立即停止使用此電腦登入遊戲，保存本報告後重灌系統。"
-                : "確認這些模組的來源。不認得的請保存本報告後從官網重新安裝。",
-            [
-                .. unsigned.OrderByDescending(u => u.Trust == SignatureTrust.BadDigest)
-                           .Take(50)
-                           .Select(u => new Evidence(
-                               u.Trust == SignatureTrust.BadDigest ? "⚠ 已竄改" : "未簽章",
-                               $"{u.Path}（{u.Trust}）")),
-            ]);
+            CheckStatus.Pass,
+            $"掃描 {scanned} 個模組，沒有被竄改的檔案。"
+            + $"其中 {unsigned.Count} 個未經簽章 —— 這在正常安裝中很常見，"
+            + "應用程式捆綁的開源套件（Autofac、CefSharp 等）多半不帶簽章，因此不計為異常。",
+            null,
+            [.. unsigned.Take(30).Select(u => new Evidence("未簽章（僅供參考）", $"{u.Path}（{u.Trust}）"))]);
     }
 
     private Finding Build(

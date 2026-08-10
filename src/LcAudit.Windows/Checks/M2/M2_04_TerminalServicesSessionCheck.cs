@@ -1,5 +1,6 @@
 using LcAudit.Core.Abstractions;
 using LcAudit.Core.Model;
+using LcAudit.Core.Validation;
 using LcAudit.Windows.Sources;
 
 namespace LcAudit.Windows.Checks.M2;
@@ -74,46 +75,68 @@ public sealed class M2_04_TerminalServicesSessionCheck(IWindowsEventLog eventLog
     {
         ArgumentNullException.ThrowIfNull(records);
 
-        if (records.Count == 0)
+        // 這個記錄檔**也會記錄本機主控台的登入登出** —— 使用者自己開關機、鎖定解鎖
+        // 都會產生事件，來源欄位是「本機」（在地化字串）或空值。
+        //
+        // 原本不分來源全部計入，導致一台從未被遠端連入的機器出現「52 筆終端服務事件，
+        // 主機曾被他人連入」。實測那 52 筆裡遠端來源是 0 筆。
+        //
+        // 判定方式：來源欄位能解析成 IP 位址才算遠端。這樣不必依賴「本機」/"LOCAL"
+        // 這種會隨系統語言變動的字串。
+        var remote = records
+            .Where(r => PrivateAddressClassifier.Classify(r.Property(1))
+                        is AddressScope.Public or AddressScope.Private)
+            .ToList();
+
+        if (remote.Count == 0)
         {
-            return new Finding
-            {
-                Id = Id,
-                Module = Module,
-                Title = Title,
-                Severity = Severity,
-                Status = CheckStatus.Pass,
-                Source = Source,
-                Description = $"過去 {lookbackDays} 天內沒有終端服務工作階段紀錄。",
-            };
+            return Build(
+                CheckStatus.Pass,
+                records.Count == 0
+                    ? $"過去 {lookbackDays} 天內沒有終端服務工作階段紀錄。"
+                    : $"過去 {lookbackDays} 天內有 {records.Count} 筆終端服務事件，"
+                      + "但全部來自本機主控台（也就是你自己在這台電腦前登入／登出），"
+                      + "沒有任何一筆來自遠端。",
+                null,
+                []);
         }
 
         // 只有「登入」與「重新連線」代表有人實際連進來；中斷與登出是其配套事件。
-        var logons = records.Count(r => r.EventId is 21 or 25);
+        var logons = remote.Count(r => r.EventId is 21 or 25);
 
-        return new Finding
+        return Build(
+            CheckStatus.Warning,
+            $"過去 {lookbackDays} 天內有 {remote.Count} 筆**來自遠端**的終端服務事件"
+            + $"（其中 {logons} 次為登入或重新連線）。"
+            + (records.Count > remote.Count
+                ? $"另有 {records.Count - remote.Count} 筆來自本機主控台，已排除不計。"
+                : string.Empty)
+            + "若這些時間點你並未使用遠端桌面，代表主機曾被他人連入。",
+            "核對時間軸與來源位址。有不認得的紀錄請保存本報告並停用遠端桌面。",
+            [
+                .. remote.OrderByDescending(r => r.TimeCreated)
+                         .Take(30)
+                         .Select(r => new Evidence(
+                             r.TimeCreated.ToString("yyyy-MM-dd HH:mm:ss"),
+                             $"{EventNames.GetValueOrDefault(r.EventId, $"EventID {r.EventId}")}"
+                             + $"｜使用者 {r.Property(0) ?? "(未記錄)"}"
+                             + $"｜來源 {r.Property(1) ?? "(未記錄)"}",
+                             r.TimeCreated)),
+            ]);
+    }
+
+    private Finding Build(
+        CheckStatus status, string description, string? recommendation, IReadOnlyList<Evidence> evidence)
+        => new()
         {
             Id = Id,
             Module = Module,
             Title = Title,
             Severity = Severity,
-            Status = CheckStatus.Warning,
+            Status = status,
             Source = Source,
-            Description = $"過去 {lookbackDays} 天內有 {records.Count} 筆終端服務事件"
-                          + $"（其中 {logons} 次為登入或重新連線）。"
-                          + "若這些時間點你並未使用遠端桌面，代表主機曾被他人連入。",
-            Recommendation = "核對時間軸與來源位址。有不認得的紀錄請保存本報告並停用遠端桌面。",
-            Evidence =
-            [
-                .. records.OrderByDescending(r => r.TimeCreated)
-                          .Take(30)
-                          .Select(r => new Evidence(
-                              r.TimeCreated.ToString("yyyy-MM-dd HH:mm:ss"),
-                              $"{EventNames.GetValueOrDefault(r.EventId, $"EventID {r.EventId}")}"
-                              + $"｜使用者 {r.Property(0) ?? "(未記錄)"}"
-                              + $"｜來源 {r.Property(1) ?? "(未記錄)"}",
-                              r.TimeCreated)),
-            ],
+            Description = description,
+            Recommendation = recommendation,
+            Evidence = evidence,
         };
-    }
 }

@@ -69,10 +69,14 @@ public static class FileNameSimilarity
 
         var results = new List<SimilarFileName>();
 
+        // 同一個檔名可能出現在多個版本子目錄，去重後才列出 ——
+        // 實測有一份報告把同一個 purpleon.exe 重複列了 13 次。
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var fileName in fileNames)
         {
             // 正版檔名本身直接跳過
-            if (knownGood.Contains(fileName))
+            if (knownGood.Contains(fileName) || !seen.Add(fileName))
             {
                 continue;
             }
@@ -118,9 +122,13 @@ public static class FileNameSimilarity
                 }
             }
 
-            // 規則 3：編輯距離 ≤ 2 且長度相近。刻意排除長度差異大的，
-            // 否則安裝目錄裡正常的 PurpleUpdater 之類會被掃進來。
-            if (Math.Abs(folded.Length - knownFolded.Length) <= 2
+            // 規則 3：編輯距離 ≤ 2 且**長度差 ≤ 1**。
+            //
+            // 長度差原本放寬到 2，結果官方安裝目錄裡的 purpleon.exe 中槍
+            // （purpleon vs purple：距離 2、長度差 2，剛好鑽過去）。
+            // 這條規則要抓的是拼字錯置（Purpel、Pruple），那類長度必定相同或只差一；
+            // 加了後綴的變體交給規則 2 判斷。
+            if (Math.Abs(folded.Length - knownFolded.Length) <= 1
                 && !folded.Equals(knownFolded, StringComparison.Ordinal)
                 && LevenshteinDistance(folded, knownFolded) <= 2)
             {

@@ -17,10 +17,21 @@ public sealed class InferenceEngine : IInferenceEngine
                            .Select(f => f.Id)
                            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+        // 明確異常（Fail）與需人工研判（Warning）必須分開。
+        //
+        // 實際案例：一台紫P 完全正版的機器（M1-01/M1-02 皆 Pass），只因為 M1-04 是
+        // Warning（安裝程式解壓出來的檔案本來就沒有 MOTW），就被推論為「假紫P，
+        // 端點已不可信，建議直接重灌」。使用者若照做就是白白重灌一台乾淨的電腦。
+        //
+        // S-05 的 Critical 強制升等早就採「只認 Fail」，同樣的道理必須套用到推論規則。
+        var failures = findings.Where(f => f.Status == CheckStatus.Fail)
+                               .Select(f => f.Id)
+                               .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         var results = new List<Inference>();
 
-        // R1｜假紫P／釣魚安裝檔。命中即代表端點本身不可信，優先序最高。
-        var fakePurple = MatchAny(hits, "M1-01", "M1-02", "M1-04");
+        // R1｜假紫P／釣魚安裝檔。這條結論會叫人重灌，只能由 Fail 觸發。
+        var fakePurple = MatchAny(failures, "M1-01", "M1-02", "M1-04");
         if (fakePurple.Count > 0)
         {
             results.Add(new Inference("R1",
@@ -29,8 +40,12 @@ public sealed class InferenceEngine : IInferenceEngine
                 RiskLevel.Extreme));
         }
 
-        // R2｜防毒遭主動停用。需 M3-10 與 M3-11 同時成立。
-        var defenderDisabled = MatchAny(hits, "M3-10", "M3-11");
+        // R2｜防毒遭主動停用。M3-11（即時防護關閉）必須是 Fail 才算數 ——
+        // M3-10 排除清單存在只是 Warning，單獨出現不足以斷定防毒「被主動停用」。
+        var defenderDisabled = failures.Contains("M3-11")
+            ? MatchAny(hits, "M3-10", "M3-11")
+            : [];
+
         if (defenderDisabled.Count == 2)
         {
             results.Add(new Inference("R2",
@@ -39,21 +54,46 @@ public sealed class InferenceEngine : IInferenceEngine
                 RiskLevel.High));
         }
 
-        // R3｜RDP 遭爆破或帳號被建立。需「有遠端登入跡證」且「有帳號異動」同時成立。
+        // R3｜遠端登入與帳號異動同時出現。
+        //
+        // 兩邊都是「設計上就只會產出 Warning」的檢查項（有遠端登入紀錄、有非預期帳號），
+        // 所以這條規則的組成必然是兩個 Warning。實測一台正常使用公司 RDP 的筆電就會命中，
+        // 而且原本會被拉到「高」並宣告「RDP 遭爆破」—— 但 M2-03（登入失敗爆量）
+        // 根本沒命中，完全沒有爆破跡證。
+        //
+        // 因此：
+        // 1. 有爆破或公網登入跡證（M2-02 / M2-03）才敢說「遭爆破」，等級下限「高」
+        // 2. 否則只陳述「這個組合值得核對」，等級下限降為「中」
         var remoteLogon = MatchAny(hits, "M2-01", "M2-04");
         var accountChange = MatchAny(hits, "M3-03", "M3-04");
+
         if (remoteLogon.Count > 0 && accountChange.Count > 0)
         {
-            results.Add(new Inference("R3",
-                "RDP 遭爆破或帳號被建立 — 遠端登入跡證與本機帳號異動同時出現。",
-                [.. remoteLogon, .. accountChange],
-                RiskLevel.High));
+            var attackEvidence = MatchAny(hits, "M2-02", "M2-03");
+
+            results.Add(attackEvidence.Count > 0
+                ? new Inference("R3",
+                    "RDP 遭爆破或帳號被建立 — 遠端登入跡證、本機帳號異動，"
+                    + "以及來自公網的登入或密碼嘗試失敗爆量同時出現。",
+                    [.. remoteLogon, .. accountChange, .. attackEvidence],
+                    RiskLevel.High)
+                : new Inference("R3-P",
+                    "有遠端登入紀錄，同時也有非預期的本機帳號 —— 這個組合值得核對。"
+                    + "但沒有發現密碼爆破或來自公網的登入跡證，"
+                    + "所以也可能只是你自己或公司 IT 的正常遠端使用。"
+                    + "請確認那些帳號與登入時間是否都是你認可的。",
+                    [.. remoteLogon, .. accountChange],
+                    RiskLevel.Medium));
         }
 
-        // R4｜第三方遠端工具遭入侵。限 M1 全數未命中 —— 若紫P 本身就有問題，
-        // 入侵途徑應歸因於 R1，而非遠端工具。
-        var remoteTools = MatchAny(hits, "M2-06", "M2-07", "M2-08");
-        var m1Clean = !findings.Any(f => f.Module == "M1" && f.IsHit);
+        // R4｜第三方遠端工具遭**入侵**。必須是 Fail —— 也就是確實有連入紀錄。
+        //
+        // 「偵測到 AnyDesk 已安裝但沒有任何連入紀錄」是 Warning，那代表「值得問一下」，
+        // 不代表「遭入侵」。用它下這個結論同樣是過度推論。
+        //
+        // M1 全數未命中才歸因於遠端工具 —— 若紫P 本身有問題，途徑應歸因於 R1。
+        var remoteTools = MatchAny(failures, "M2-06", "M2-07", "M2-08");
+        var m1Clean = !findings.Any(f => f.Module == "M1" && f.Status == CheckStatus.Fail);
         if (remoteTools.Count > 0 && m1Clean)
         {
             // 這正是「紫P 是正版，但電腦被植入 AnyDesk」的情境。

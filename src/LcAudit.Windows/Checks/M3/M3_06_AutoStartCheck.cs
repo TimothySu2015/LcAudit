@@ -17,9 +17,29 @@ public sealed record AutoStartEntry(
     string? ExecutablePath,
     SignatureTrust? SignatureTrust)
 {
-    public bool IsUnsigned => SignatureTrust is not null and not Sources.SignatureTrust.Valid;
+    /// <summary>
+    /// 確定沒有有效簽章。
+    /// <para>
+    /// <c>Unknown</c>（未列於對照表的 HRESULT）、<c>SecuritySettings</c>（政策阻擋）、
+    /// <c>FileNotReadable</c> 代表「**驗不出來**」而非「沒簽章」，不可算進來。
+    /// <c>Expired</c> 也不算 —— Azure Trusted Signing 的憑證只有幾天效期，
+    /// 「憑證過期但簽章有效」是常態。
+    /// </para>
+    /// </summary>
+    public bool IsUnsigned => SignatureTrust is Sources.SignatureTrust.NoSignature
+                                             or Sources.SignatureTrust.BadDigest
+                                             or Sources.SignatureTrust.ExplicitDistrust
+                                             or Sources.SignatureTrust.SubjectNotTrusted
+                                             or Sources.SignatureTrust.ChainIncomplete;
 
+    /// <summary>位於 %TEMP% 或下載資料夾 —— 常駐程式在這裡沒有正當理由。</summary>
     public bool IsSuspiciousLocation => CommandLineParser.IsSuspiciousLocation(ExecutablePath);
+
+    /// <summary>位於使用者可寫入的位置。單獨出現不構成可疑，僅供人工過目。</summary>
+    public bool IsUserWritable => CommandLineParser.IsUserWritableLocation(ExecutablePath);
+
+    /// <summary>是否需要標記。未簽章、或位於高風險位置才算。</summary>
+    public bool IsSuspicious => IsUnsigned || IsSuspiciousLocation;
 }
 
 /// <summary>
@@ -38,6 +58,13 @@ public sealed class M3_06_AutoStartCheck(IRegistryReader registry, IAuthenticode
         @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run",
         @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\RunOnce",
     ];
+
+    /// <summary>啟動資料夾中真正會被執行的副檔名。</summary>
+    internal static readonly IReadOnlySet<string> StartupExtensions =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ".exe", ".lnk", ".bat", ".cmd", ".com", ".scr", ".vbs", ".js", ".ps1", ".url",
+        };
 
     internal static readonly IReadOnlyList<string> UserRunKeys =
     [
@@ -84,7 +111,7 @@ public sealed class M3_06_AutoStartCheck(IRegistryReader registry, IAuthenticode
     {
         ArgumentNullException.ThrowIfNull(entries);
 
-        var suspicious = entries.Where(e => e.IsUnsigned || e.IsSuspiciousLocation).ToList();
+        var suspicious = entries.Where(e => e.IsSuspicious).ToList();
 
         if (suspicious.Count == 0)
         {
@@ -106,14 +133,13 @@ public sealed class M3_06_AutoStartCheck(IRegistryReader registry, IAuthenticode
 
         if (badLocation > 0)
         {
-            parts.Add($"{badLocation} 個位於暫存或使用者資料目錄");
+            parts.Add($"{badLocation} 個位於暫存或下載目錄");
         }
 
         return Build(
             CheckStatus.Warning,
             $"共 {entries.Count} 個開機自動啟動項目，其中 {string.Join("、", parts)}。"
-            + "開機自動啟動是後門最典型的落腳處 —— 未簽章、又裝在 %TEMP% 或 %APPDATA% 的項目特別可疑。"
-            + "（注意 Discord、Spotify 這類正規軟體也會裝在 %APPDATA%，需搭配簽章一起判斷。）",
+            + "開機自動啟動是後門最典型的落腳處。",
             "逐項確認來源。不認得的、或未簽章又位於暫存目錄的，請保存本報告後移除。",
             [.. suspicious.Select(ToEvidence), .. entries.Except(suspicious).Select(ToEvidence)]);
     }
@@ -128,7 +154,7 @@ public sealed class M3_06_AutoStartCheck(IRegistryReader registry, IAuthenticode
 
         if (entry.IsSuspiciousLocation)
         {
-            flags.Add("位於暫存或使用者資料目錄");
+            flags.Add("位於暫存或下載目錄");
         }
 
         var marker = flags.Count > 0 ? "⚠ " : string.Empty;
@@ -171,6 +197,13 @@ public sealed class M3_06_AutoStartCheck(IRegistryReader registry, IAuthenticode
 
             foreach (var file in Directory.EnumerateFiles(path))
             {
+                // desktop.ini 是資料夾外觀設定檔，不會被執行 —— 每個啟動資料夾都有一份，
+                // 不排除的話每台機器都會多兩個假的「可疑啟動項」。
+                if (!StartupExtensions.Contains(Path.GetExtension(file)))
+                {
+                    continue;
+                }
+
                 // 捷徑不解析目標 —— 那需要 COM，且捷徑本身位於啟動資料夾就足以列出供人工判斷
                 var isShortcut = Path.GetExtension(file).Equals(".lnk", StringComparison.OrdinalIgnoreCase);
 

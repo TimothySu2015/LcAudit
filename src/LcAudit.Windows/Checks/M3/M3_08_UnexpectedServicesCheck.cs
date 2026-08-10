@@ -12,9 +12,16 @@ public sealed record ServiceEntry(
     string? ExecutablePath,
     SignatureTrust? SignatureTrust)
 {
-    public bool IsUnsigned => SignatureTrust is not null and not Sources.SignatureTrust.Valid;
+    /// <summary>確定沒有有效簽章。判定範圍與 <see cref="AutoStartEntry.IsUnsigned"/> 一致。</summary>
+    public bool IsUnsigned => SignatureTrust is Sources.SignatureTrust.NoSignature
+                                             or Sources.SignatureTrust.BadDigest
+                                             or Sources.SignatureTrust.ExplicitDistrust
+                                             or Sources.SignatureTrust.SubjectNotTrusted
+                                             or Sources.SignatureTrust.ChainIncomplete;
 
     public bool IsSuspiciousLocation => CommandLineParser.IsSuspiciousLocation(ExecutablePath);
+
+    public bool IsSuspicious => IsUnsigned || IsSuspiciousLocation;
 }
 
 /// <summary>
@@ -94,7 +101,7 @@ public sealed class M3_08_UnexpectedServicesCheck(IRegistryReader registry, IAut
             return Build(CheckStatus.Inconclusive, "無法列舉自動啟動服務。", null, []);
         }
 
-        var suspicious = services.Where(s => s.IsUnsigned || s.IsSuspiciousLocation).ToList();
+        var suspicious = services.Where(s => s.IsSuspicious).ToList();
 
         if (suspicious.Count == 0)
         {
@@ -108,13 +115,13 @@ public sealed class M3_08_UnexpectedServicesCheck(IRegistryReader registry, IAut
         return Build(
             CheckStatus.Warning,
             $"共 {services.Count} 個自動啟動服務，其中 {suspicious.Count} 個未簽章、簽章無效、"
-            + "或位於暫存與使用者資料目錄。以服務形式常駐是後門取得開機自動執行與高權限的常見手法。",
+            + "或位於暫存與下載目錄。以服務形式常駐是後門取得開機自動執行與高權限的常見手法。",
             "逐項確認來源。不認得的服務請保存本報告後查證，勿直接刪除以免破壞跡證。",
             [
                 .. suspicious.Select(s => new Evidence(
                     $"⚠ {s.ServiceName}",
                     $"{s.DisplayName ?? s.ServiceName}｜{s.ImagePath}"
-                    + $"　←　{(s.IsUnsigned ? $"簽章 {s.SignatureTrust}" : "位於暫存或使用者資料目錄")}")),
+                    + $"　←　{(s.IsUnsigned ? $"簽章 {s.SignatureTrust}" : "位於暫存或下載目錄")}")),
             ]);
     }
 

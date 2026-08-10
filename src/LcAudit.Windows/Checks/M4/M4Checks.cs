@@ -365,8 +365,11 @@ public sealed class M4_04_KnownRemoteServiceCheck(
     {
         ArgumentNullException.ThrowIfNull(outbound);
 
-        var knownToolNames = GameProcessDetector.KnownNames
-            .Concat(Sources.RemoteTools.RemoteToolCatalog.All.Select(t => t.DisplayName))
+        // 只比對遠端工具，**不可**把 GameProcessDetector.KnownNames 混進來 ——
+        // 那份清單裡有 "Purple"，會讓紫P 自己被判為「連向已知遠端服務」。
+        // 實際案例：Purple (PID 1832) → 216.107.244.75:6600 被標成可疑。
+        var knownToolNames = Sources.RemoteTools.RemoteToolCatalog.All
+            .Select(t => t.DisplayName)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var hits = outbound

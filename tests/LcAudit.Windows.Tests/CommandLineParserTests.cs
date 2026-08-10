@@ -76,10 +76,32 @@ public sealed class CommandLineParserTests
         => Assert.True(CommandLineParser.IsSuspiciousLocation(
             Path.Combine(Path.GetTempPath(), "dropper.exe")));
 
+    /// <summary>
+    /// AppData 與 ProgramData **不算**高風險位置。
+    /// <para>
+    /// 實測一台乾淨機器：Teams、Discord、Lenovo Vantage 全部中槍，
+    /// 連 Windows Defender 自己都被標成可疑（它的執行檔在
+    /// <c>%ProgramData%\Microsoft\Windows Defender\Platform\</c>）。
+    /// 稽核工具把防毒軟體標成可疑，使用者只會學會忽略這一項。
+    /// </para>
+    /// </summary>
+    [Theory]
+    [InlineData(Environment.SpecialFolder.ApplicationData)]
+    [InlineData(Environment.SpecialFolder.LocalApplicationData)]
+    [InlineData(Environment.SpecialFolder.CommonApplicationData)]
+    public void 使用者可寫入的位置不算高風險(Environment.SpecialFolder folder)
+    {
+        var path = Path.Combine(Environment.GetFolderPath(folder), "x", "y.exe");
+
+        Assert.False(CommandLineParser.IsSuspiciousLocation(path));
+        Assert.True(CommandLineParser.IsUserWritableLocation(path));
+    }
+
     [Fact]
-    public void AppData視為可疑位置()
-        => Assert.True(CommandLineParser.IsSuspiciousLocation(Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "x", "y.exe")));
+    public void Defender自己的路徑不得被判為可疑()
+        => Assert.False(CommandLineParser.IsSuspiciousLocation(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            @"Microsoft\Windows Defender\Platform\4.18.26070.9-0\MsMpEng.exe")));
 
     [Fact]
     public void 下載資料夾視為可疑位置()
