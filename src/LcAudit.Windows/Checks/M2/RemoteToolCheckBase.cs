@@ -1,5 +1,6 @@
 using LcAudit.Core.Abstractions;
 using LcAudit.Core.Model;
+using LcAudit.Windows.Sources;
 using LcAudit.Windows.Sources.RemoteTools;
 
 namespace LcAudit.Windows.Checks.M2;
@@ -8,7 +9,10 @@ namespace LcAudit.Windows.Checks.M2;
 /// M2-06 / M2-07 共用的判定邏輯：有連入紀錄 → Warning，只裝了但沒連入 → Warning（較輕），
 /// 完全沒痕跡 → Pass。
 /// </summary>
-public abstract class RemoteToolCheckBase(IRemoteToolScanner scanner, RemoteToolDefinition tool) : ICheck
+public abstract class RemoteToolCheckBase(
+    IRemoteToolScanner scanner,
+    IWindowsEventLog eventLog,
+    RemoteToolDefinition tool) : ICheck
 {
     public abstract string Id { get; }
 
@@ -38,10 +42,18 @@ public abstract class RemoteToolCheckBase(IRemoteToolScanner scanner, RemoteTool
             .SelectMany(content => ParseLog(content!))
             .ToList();
 
-        return ValueTask.FromResult(Evaluate(trace, connections));
+        // PurpleInstallPath 由 M1-00 寫入，是唯一允許跨模組共享的狀態 ——
+        // 拿它來比對「遠端工具與紫P 是不是同一時段裝上的」不需要新的相依。
+        var installContext = InstallTimeCorrelator.Correlate(
+            eventLog, trace.InstalledAt, context.LookbackDays, context.PurpleInstallPath);
+
+        return ValueTask.FromResult(Evaluate(trace, connections, installContext));
     }
 
-    internal Finding Evaluate(RemoteToolTrace trace, IReadOnlyList<IncomingConnection> connections)
+    internal Finding Evaluate(
+        RemoteToolTrace trace,
+        IReadOnlyList<IncomingConnection> connections,
+        InstallTimeContext? installContext = null)
     {
         ArgumentNullException.ThrowIfNull(trace);
         ArgumentNullException.ThrowIfNull(connections);
@@ -52,8 +64,20 @@ public abstract class RemoteToolCheckBase(IRemoteToolScanner scanner, RemoteTool
         }
 
         var evidence = new List<Evidence>();
+
+        // 安裝時間放在最前面 —— 使用者往往根本不知道電腦上有這個程式，
+        // 「請核對是否為你本人所為」他答不出來，但一個具體時間點他立刻能判斷。
+        if (trace.InstalledAt is { } installedAt)
+        {
+            evidence.Add(new Evidence("安裝時間（推估）", installedAt.ToString("yyyy-MM-dd HH:mm:ss"), installedAt));
+        }
+
         evidence.AddRange(trace.FoundDirectories.Select(d => new Evidence("目錄", d)));
         evidence.AddRange(trace.FoundServices.Select(s => new Evidence("服務", s)));
+
+        var installStory = trace.InstalledAt is { } t && installContext is not null
+            ? InstallTimeCorrelator.Describe(t, installContext)
+            : null;
 
         if (connections.Count == 0)
         {
@@ -64,8 +88,12 @@ public abstract class RemoteToolCheckBase(IRemoteToolScanner scanner, RemoteTool
             return Build(
                 CheckStatus.Warning,
                 $"偵測到 {tool.DisplayName} 已安裝，{reason}。"
-                + "若這不是你自己安裝的，代表有人在此電腦上部署了遠端存取工具。",
-                $"確認 {tool.DisplayName} 是否為你本人安裝。若否，請保存本報告後移除，並更改所有帳號密碼。",
+                + (trace.InstalledAt is { } installedTime ? $"安裝時間約在 {installedTime:yyyy-MM-dd HH:mm}。" : string.Empty)
+                + (installStory is not null ? installStory : string.Empty)
+                + "**你認得這個程式嗎？如果完全沒印象裝過，那就是答案**"
+                + " —— 它能讓別人隨時連進你的電腦。",
+                $"沒印象裝過就直接移除 {tool.DisplayName}，並在**另一台乾淨裝置**上更改所有帳號密碼。"
+                + "移除前請先保存本報告。",
                 evidence);
         }
 
@@ -94,9 +122,14 @@ public abstract class RemoteToolCheckBase(IRemoteToolScanner scanner, RemoteTool
         return Build(
             CheckStatus.Fail,
             $"{tool.DisplayName} 有 {connections.Count} 筆**連入**紀錄 —— 曾有人從外部連進這台電腦。{range}"
-            + "逐筆核對是否為你本人或你授權的人所為。若不是，代表他人能隨時操作你的電腦，"
-            + "即使紫P 是正版、密碼沒外流，對方也能在你自己登入遊戲時取走一切。",
-            "有不認得的連線請立即保存本報告，移除該工具，並在**另一台乾淨裝置**上更改遊戲與信箱密碼。",
+            + (installStory is not null
+                ? installStory
+                : trace.InstalledAt is { } at ? $"它是在 {at:yyyy-MM-dd HH:mm} 被安裝的。" : string.Empty)
+            + "**你認得這個程式、也記得自己用過它嗎？如果沒有印象，那就是答案。**"
+            + "對方能隨時操作你的電腦 —— 即使紫P 是正版、密碼沒外流，"
+            + "他也能在你自己登入遊戲的時候，坐在旁邊看著你把帳密輸進去。",
+            "立即保存本報告，移除該工具，並在**另一台乾淨裝置**上更改遊戲與信箱密碼。"
+            + "報告中的連線時間與來源請一併提供給客服與警方。",
             evidence);
     }
 
@@ -119,8 +152,8 @@ public abstract class RemoteToolCheckBase(IRemoteToolScanner scanner, RemoteTool
 }
 
 /// <summary>M2-06 AnyDesk 連線紀錄。</summary>
-public sealed class M2_06_AnyDeskCheck(IRemoteToolScanner scanner)
-    : RemoteToolCheckBase(scanner, RemoteToolCatalog.AnyDesk)
+public sealed class M2_06_AnyDeskCheck(IRemoteToolScanner scanner, IWindowsEventLog eventLog)
+    : RemoteToolCheckBase(scanner, eventLog, RemoteToolCatalog.AnyDesk)
 {
     public override string Id => "M2-06";
 
@@ -129,8 +162,8 @@ public sealed class M2_06_AnyDeskCheck(IRemoteToolScanner scanner)
 }
 
 /// <summary>M2-07 TeamViewer 連線紀錄。</summary>
-public sealed class M2_07_TeamViewerCheck(IRemoteToolScanner scanner)
-    : RemoteToolCheckBase(scanner, RemoteToolCatalog.TeamViewer)
+public sealed class M2_07_TeamViewerCheck(IRemoteToolScanner scanner, IWindowsEventLog eventLog)
+    : RemoteToolCheckBase(scanner, eventLog, RemoteToolCatalog.TeamViewer)
 {
     public override string Id => "M2-07";
 

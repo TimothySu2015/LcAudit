@@ -19,11 +19,20 @@ public sealed record RemoteToolDefinition(
 /// <param name="FoundDirectories">實際存在的目錄。</param>
 /// <param name="FoundServices">實際存在的服務登錄檔項目。</param>
 /// <param name="FoundIncomingLogs">實際存在的連入紀錄檔。</param>
+/// <param name="InstalledAt">
+/// 推估的安裝時間（目錄建立時間中最早者）；取不到為 <c>null</c>。
+/// <para>
+/// <b>這是報告裡最有用的一項資訊。</b>使用者往往根本不知道電腦上有這個程式，
+/// 「請逐筆核對是否為你本人所為」對他毫無意義 —— 他答不出來。
+/// 但「這是在 3 月 15 日凌晨 3 點 22 分裝上去的」他立刻能判斷：那時我在睡覺。
+/// </para>
+/// </param>
 public sealed record RemoteToolTrace(
     RemoteToolDefinition Tool,
     IReadOnlyList<string> FoundDirectories,
     IReadOnlyList<string> FoundServices,
-    IReadOnlyList<string> FoundIncomingLogs)
+    IReadOnlyList<string> FoundIncomingLogs,
+    DateTimeOffset? InstalledAt = null)
 {
     /// <summary>是否找到任何痕跡。</summary>
     public bool HasTrace =>

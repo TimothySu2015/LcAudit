@@ -84,7 +84,8 @@ public sealed class M1_08_InstallTimeCorrelationCheck(IWindowsEventLog eventLog)
         {
             return Build(
                 CheckStatus.Pass,
-                $"紫P 安裝於 {installedAt:yyyy-MM-dd HH:mm}，前後 {CorrelationWindow.TotalHours:0} 小時內沒有遠端連入紀錄。",
+                $"紫P 安裝於 {installedAt:yyyy-MM-dd HH:mm}，前後 {CorrelationWindow.TotalHours:0} 小時內沒有遠端連入紀錄。"
+                + "（若 M2 有偵測到遠端工具，請比對兩者的安裝時間是否接近。）",
                 null,
                 evidence);
         }

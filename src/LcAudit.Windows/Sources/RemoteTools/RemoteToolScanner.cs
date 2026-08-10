@@ -20,11 +20,44 @@ public sealed class RemoteToolScanner : IRemoteToolScanner
     {
         ArgumentNullException.ThrowIfNull(tool);
 
+        var directories = tool.Directories.Select(Expand).Where(Directory.Exists).ToList();
+
         return new RemoteToolTrace(
             tool,
-            [.. tool.Directories.Select(Expand).Where(Directory.Exists)],
+            directories,
             [.. FindServices(tool.ServiceNames)],
-            [.. tool.IncomingLogFiles.Select(Expand).Where(File.Exists)]);
+            [.. tool.IncomingLogFiles.Select(Expand).Where(File.Exists)],
+            EstimateInstallTime(directories));
+    }
+
+    /// <summary>
+    /// 以目錄建立時間中最早者推估安裝時間。
+    /// <para>
+    /// 是推估值：解壓縮、複製、還原備份都可能改變建立時間。但對使用者而言，
+    /// 一個大概的時間點遠比「請你自己回想有沒有授權過」有用得多。
+    /// </para>
+    /// </summary>
+    private static DateTimeOffset? EstimateInstallTime(IReadOnlyList<string> directories)
+    {
+        DateTimeOffset? earliest = null;
+
+        foreach (var directory in directories)
+        {
+            try
+            {
+                var created = new DateTimeOffset(Directory.GetCreationTime(directory));
+                if (earliest is null || created < earliest)
+                {
+                    earliest = created;
+                }
+            }
+            catch (SystemException)
+            {
+                // 讀不到就算了，不影響其餘判定
+            }
+        }
+
+        return earliest;
     }
 
     public string? ReadTextFile(string path)
