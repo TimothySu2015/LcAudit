@@ -23,6 +23,8 @@ public sealed class M2CheckTests
     {
         public IReadOnlyList<EventRecordData> Query(
             string logName, string xpath, IReadOnlyList<string> propertyPaths, int maxEvents) => [];
+
+        public bool LogExists(string logName) => true;
     }
 
     // ---- M2-01 遠端互動登入 ----

@@ -53,6 +53,30 @@ public sealed class WindowsEventLog : IWindowsEventLog
         return results;
     }
 
+    public bool LogExists(string logName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(logName);
+
+        try
+        {
+            _ = EventLogSession.GlobalSession.GetLogInformation(logName, PathType.LogName);
+            return true;
+        }
+        catch (EventLogNotFoundException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // 存在但讀不到 —— 交由 Query 拋出權限例外，這裡不要謊報不存在。
+            return true;
+        }
+        catch (EventLogException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>
     /// 確認記錄檔真的讀得到。<c>GetLogInformation</c> 在權限不足時會確實拋
     /// <see cref="UnauthorizedAccessException"/>，不像查詢那樣被 TolerateQueryErrors 吞掉。

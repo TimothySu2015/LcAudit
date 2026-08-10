@@ -11,15 +11,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **進度：四個專案皆已建立，`--purple-path` 的 M1 最小版本可實際執行**，161 個測試全綠。
 
 - `LcAudit.Core` — 領域模型、評分、推論引擎、純判定邏輯（網域白名單、DN 解析）
-- `LcAudit.Windows` — `Interop/`（WinTrust、Crypt32、Kernel32、SafeHandles）、`Sources/`（AuthenticodeVerifier、ProcessInspector、PurplePathProbe、GameProcessDetector、WindowsEventLog、EventQueries）、`Checks/M1/`（M1-00～M1-02）、`Checks/M2/`（M2-00 記錄檔清除偵測、M2-01～M2-03）
+- `LcAudit.Windows` — `Interop/`（WinTrust、Crypt32、Kernel32、SafeHandles）、`Sources/`（AuthenticodeVerifier、ProcessInspector、PurplePathProbe、GameProcessDetector、WindowsEventLog、EventQueries）、`Sources/RemoteTools/`（工具特徵目錄與掃描）、`Checks/M1/`（M1-00～M1-02）、`Checks/M2/`（**M2 已全數完成**：M2-00 記錄檔清除偵測 + M2-01～M2-10）
 - `LcAudit.Reporting` — `ConsoleReporter`（Spectre.Console）、`HtmlReporter`（§8.3 自包含單檔）、`JsonReporter`（§8.2）、`ReportWriter`（檔名與編碼）、`ReportPresentation`
 - `LcAudit.Cli` — `System.CommandLine` 2.0.10 GA API + DI + pre-flight，結束代碼已接風險等級
 
 已端到端驗證：正常簽章但簽章者非 NCSOFT → M1-02 Fail(40) → 強制「極高」→ 結束代碼 3；改造正版（竄改）→ M1-01 BadDigest + M1-02 皆 Fail(80)。
 
-**尚未實作**：M1-03～M1-08、M2-04～M2-10、M3、M4。CLI 參數已全部接通（`--days`／`--purple-path`／`--output`／`--format`／`--skip-module`）。
+**尚未實作**：M1-03～M1-08、M3、M4。CLI 參數已全部接通（`--days`／`--purple-path`／`--output`／`--format`／`--skip-module`）。
 
-**注意 M2 的驗證缺口**：M2 各項的「有資料」路徑只用假資料做過單元測試 —— 本機開發時未提權，實際讀 Security 記錄的路徑（具名欄位是否對得上 4624 的實際結構）尚未以真實事件驗證過。首次以系統管理員執行時要重點確認帳號、IP、LogonType 有正確填入。
+**注意 M2 的驗證缺口**：M2-04 的具名欄位擷取已對真實事件驗證通過（使用者、來源位址、事件類型皆正確）。但 **Security 記錄相關項（M2-00～M2-03、M2-10）的「有資料」路徑仍只用假資料測過** —— 本機開發時未提權。首次以系統管理員執行時要重點確認 4624/4625 的 `TargetUserName`、`IpAddress`、`LogonType` 有正確填入，欄位名稱對不上的話會全部變成空值而靜默判 Pass。
+
+**方向別搞混**：M2-05（RDP 用戶端）與 M2-09（Bitmap 快取）記的是「本機**連出去**」，不是被連入；M2-06/07 的 `Connections_incoming` 才是被連入。程式碼與報告文案都刻意標注了方向。
 
 **測試素材不進版控**：整合測試的 PE 檔在執行當下產生（`TestAssets.cs`），避免防毒對 repo 誤判、避免故意損壞的檔案被誤用。**不可用 `notepad.exe`／`kernel32.dll` 當已簽章素材** —— 那是目錄簽章(Catalog)，複本不受保護，`WinVerifyTrust` 走 `WTD_CHOICE_FILE` 會判為未簽章（技術設計 §7.1 建議用 notepad.exe 複本，那是錯的）。要用內嵌簽章的檔案，如 `%ProgramFiles%\dotnet\dotnet.exe`。
 
@@ -59,13 +61,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **2. 寫檔只能經由 `ReportWriter`，且只能寫在 `--output` 目錄下**（NFR-03）。UTF-8 with BOM（NFR-08）。`--format Console` 時連目錄都不建立。
 
-## 事件記錄的兩個坑（M2 實作前必讀，皆已實測確認）
+## 事件記錄的三個坑（M2 實作前必讀，皆已實測確認）
 
 **1. `TolerateQueryErrors = true` 會讓權限不足變成靜默失敗。** 未提權查 Security 記錄時，`EventLogReader` 建得起來、`ReadEvent()` 直接回 `null`，**不拋任何例外**。於是「讀不到記錄檔」與「期間內沒有事件」完全無法區分，M2 會全部報「通過」—— 工具在讀不到資料的情況下宣稱沒有遠端登入，這比沒有這個檢查還糟。
 
 修法：`WindowsEventLog.Query` 進入查詢前先呼叫 `EventLogSession.GlobalSession.GetLogInformation()` 明確探測可讀性，它會確實拋 `UnauthorizedAccessException`。不要改用 `TolerateQueryErrors = false` —— 那會讓單筆損毀記錄毀掉整批查詢。回歸測試見 `WindowsEventLogIntegrationTests.未提權讀取Security必須拋例外而非靜默回空`。
 
-**2. XPath 的比較運算子必須是字面的 `<=`，不可寫成 XML 跳脫的 `&lt;=`。** `EventLogQuery` 收的是純 XPath 運算式而非 XML，跳脫版會被拒為「指定的查詢無效」。而且這個錯誤會被 `SafeCheckDecorator` 吞成 `Inconclusive`，極難察覺。`EventQueries` 有測試守住。
+**2. 不是所有事件記錄都需要提權。** Security 記錄需要，但 `Microsoft-Windows-TerminalServices-LocalSessionManager/Operational` **不需要** —— 已實測確認可在未提權下讀出完整的工作階段時間軸（含使用者與來源位址）。這讓 M2-04 成為未提權執行時最有價值的遠端存取跡證來源。實作新的事件記錄檢查時，別預設「一律需要提權」而白白放棄可得的資料。
+
+另外，TerminalServices 這類記錄檔在從未使用過遠端桌面的機器上可能根本不存在 —— 那應判 `Inconclusive`（查不到），而非讓 `FileNotFoundException` 變成語意模糊的「檢查執行失敗」。用 `IWindowsEventLog.LogExists()` 先問。
+
+**3. XPath 的比較運算子必須是字面的 `<=`，不可寫成 XML 跳脫的 `&lt;=`。** `EventLogQuery` 收的是純 XPath 運算式而非 XML，跳脫版會被拒為「指定的查詢無效」。而且這個錯誤會被 `SafeCheckDecorator` 吞成 `Inconclusive`，極難察覺。`EventQueries` 有測試守住。
 
 ## 反作弊共存規則（M1-00 / M4-01 / M4-03 實作前必讀）
 

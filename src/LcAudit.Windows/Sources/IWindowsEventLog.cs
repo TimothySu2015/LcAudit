@@ -36,4 +36,14 @@ public interface IWindowsEventLog
         string xpath,
         IReadOnlyList<string> propertyPaths,
         int maxEvents);
+
+    /// <summary>
+    /// 記錄檔是否存在且啟用。
+    /// <para>
+    /// TerminalServices 之類的記錄檔在未使用過遠端桌面的機器上可能根本不存在 ——
+    /// 那應該判 <c>Inconclusive</c>（「查不到」），而不是讓 <c>FileNotFoundException</c>
+    /// 冒出去變成語意模糊的「檢查執行失敗」。
+    /// </para>
+    /// </summary>
+    bool LogExists(string logName);
 }

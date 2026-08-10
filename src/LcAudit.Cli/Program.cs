@@ -9,6 +9,7 @@ using LcAudit.Reporting;
 using LcAudit.Windows.Checks.M1;
 using LcAudit.Windows.Checks.M2;
 using LcAudit.Windows.Sources;
+using LcAudit.Windows.Sources.RemoteTools;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Spectre.Console;
@@ -171,6 +172,7 @@ static ServiceCollection BuildServices()
     services.AddSingleton<IInferenceEngine, InferenceEngine>();
 
     services.AddSingleton<IWindowsEventLog, WindowsEventLog>();
+    services.AddSingleton<IRemoteToolScanner, RemoteToolScanner>();
 
     // Reporting
     services.AddSingleton<HtmlReporter>();
@@ -185,6 +187,13 @@ static ServiceCollection BuildServices()
     RegisterCheck<M2_01_RemoteInteractiveLogonCheck>(services);
     RegisterCheck<M2_02_NetworkLogonCheck>(services);
     RegisterCheck<M2_03_LogonFailureBurstCheck>(services);
+    RegisterCheck<M2_04_TerminalServicesSessionCheck>(services);
+    RegisterCheck<M2_05_RdpClientCheck>(services);
+    RegisterCheck<M2_06_AnyDeskCheck>(services);
+    RegisterCheck<M2_07_TeamViewerCheck>(services);
+    RegisterCheck<M2_08_OtherRemoteToolsCheck>(services);
+    RegisterCheck<M2_09_RdpBitmapCacheCheck>(services);
+    RegisterCheck<M2_10_LockUnlockTimelineCheck>(services);
 
     services.AddSingleton<AuditRunner>();
 
