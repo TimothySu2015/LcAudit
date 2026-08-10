@@ -8,7 +8,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **實作形式：C# / .NET 10 Console App（`net10.0-windows`, win-x64），單一執行檔發佈。** 這是唯一的實作方向 —— 不做 GUI、不做服務、不做 Web。使用者的操作方式就是開一個終端機、跑 `LcAudit.exe` 帶參數，看 Console 輸出並拿到報告檔。
 
-**進度：階段 1 已完成**（技術設計 §8 的六階段）。`LcAudit.Core` + `LcAudit.Core.Tests` 已建立並全綠（103 個測試），內容為領域模型、評分、推論引擎、以及兩處純判定邏輯（網域白名單、DN 解析）。`LcAudit.Windows` / `Reporting` / `Cli` **尚未建立**，下一步是階段 2（Interop WinTrust/Crypt32 + TestAssets）。
+**進度：階段 1、2 已完成**（技術設計 §8 的六階段），139 個測試全綠。
+
+- `LcAudit.Core` — 領域模型、評分、推論引擎、純判定邏輯（網域白名單、DN 解析）
+- `LcAudit.Windows` — `Interop/`（WinTrust、Crypt32、SafeHandles）、`Sources/AuthenticodeVerifier`、`Checks/M1/`（M1-01、M1-02）
+- `LcAudit.Reporting` / `LcAudit.Cli` **尚未建立**
+
+下一步是階段 3（事件記錄 + M2）。M1 其餘項（M1-00 路徑探測、M1-03～M1-08）也還沒做 —— 目前 M1-01/M1-02 靠 `AuditContext.PurpleInstallPath`，沒有 M1-00 填值就一律 `Inconclusive`。
+
+**測試素材不進版控**：整合測試的 PE 檔在執行當下產生（`TestAssets.cs`），避免防毒對 repo 誤判、避免故意損壞的檔案被誤用。**不可用 `notepad.exe`／`kernel32.dll` 當已簽章素材** —— 那是目錄簽章(Catalog)，複本不受保護，`WinVerifyTrust` 走 `WTD_CHOICE_FILE` 會判為未簽章（技術設計 §7.1 建議用 notepad.exe 複本，那是錯的）。要用內嵌簽章的檔案，如 `%ProgramFiles%\dotnet\dotnet.exe`。
 
 ## 文件的權威順序（Ground Truth）
 
@@ -28,7 +36,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **禁止 `X509Certificate.CreateFromSignedFile()`** — 它根本不驗證簽章，只是掃檔案任意位置找像憑證的東西。偽造的紫P 只要把 NCSOFT 公開憑證塞進資源區段就能通過。
 - **禁止 `CERT_QUERY_CONTENT_FLAG_ALL`** — `CryptQueryObject` 的旗標必須且只能是 `CERT_QUERY_CONTENT_FLAG_PKCS7_SIGNED_EMBED` (0x400)。
 - 正確作法：`Status` 判定走 `WinVerifyTrust`（`WINTRUST_ACTION_GENERIC_VERIFY_V2`），`Signer` 抽取走 `CryptQueryObject` + PKCS7_SIGNED_EMBED，**兩者皆通過才算 Pass**。
-- 回歸測試守門員：`cert-embedded-unsigned.exe`（未簽章但內嵌憑證）必須判為 `TRUST_E_NOSIGNATURE`。任何重構讓它變成「已簽章」，就是有人把上述禁忌寫回去了。
+- **回歸測試守門員是「被竄改的已簽章檔案」**，不是規格說的 `cert-embedded-unsigned.exe`。已在本機實測確認：拿正版 `dotnet.exe` 改動中段一個位元組後，`WinVerifyTrust` 回 `TRUST_E_BAD_DIGEST`（正確），而 `CreateFromSignedFile` 照樣回報「O=Microsoft Corporation」，對竄改毫無反應。假紫P 最省事的做法就是改造正版，不必自己弄憑證。
+- `cert-embedded-unsigned.exe` 這個素材**沒有重現**技術設計 §0 描述的繞過。已試兩種構造（DER 附加於 PE 尾端、編為 .NET 內嵌資源），`CreateFromSignedFile` 兩者都拋 `CryptographicException` 而非回報憑證裡的簽章者。它仍是合理的負面案例，但別當它是守門員。若要做出真正的資源區段陷阱，需以 Win32 資源（而非 .NET 內嵌資源）寫入，尚未驗證。
+- 禁令不因此放寬：`CreateFromSignedFile` 的致命缺陷是**它根本不做任何驗證**，上面的竄改實測已足以證明。
 
 其他易錯點：
 - 簽章者比對必須解析 DN 取 `O=` 欄位比對 `"NCSOFT Corporation"`，**不可** `cert.Subject.Contains("NCSOFT")`（`CN=NCSOFT-Free-Launcher, O=Evil Ltd` 會通過）。

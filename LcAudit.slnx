@@ -1,8 +1,10 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/LcAudit.Core/LcAudit.Core.csproj" />
+    <Project Path="src/LcAudit.Windows/LcAudit.Windows.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/LcAudit.Core.Tests/LcAudit.Core.Tests.csproj" />
+    <Project Path="tests/LcAudit.Windows.Tests/LcAudit.Windows.Tests.csproj" />
   </Folder>
 </Solution>
