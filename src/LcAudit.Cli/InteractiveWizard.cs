@@ -62,6 +62,32 @@ internal static class InteractiveWizard
         return false;
     }
 
+    private const string PurposeIncident = "我的帳號已經被盜了，想找出原因";
+    private const string PurposeRoutine = "沒有被盜，只是想檢查電腦目前的狀況";
+
+    /// <summary>
+    /// 先問這次檢查的目的。
+    /// <para>
+    /// 不是每個人都是出事了才來 —— 有人只是想順手檢查電腦。對這些人問「帳號什麼
+    /// 時候被盜」不但答不出來，還會讓他以為自己漏看了什麼。
+    /// </para>
+    /// </summary>
+    internal static bool AskIsIncidentInvestigation(IAnsiConsole console)
+    {
+        console.Write(new Rule("[bold]這次檢查是因為什麼？[/]").LeftJustified());
+        console.WriteLine();
+
+        var choice = console.Prompt(
+            new SelectionPrompt<string>()
+                .AddChoices(PurposeIncident, PurposeRoutine)
+                .HighlightStyle(new Style(foreground: Color.Yellow)));
+
+        console.MarkupLine($"[grey]  已選擇：{Markup.Escape(choice)}[/]");
+        console.WriteLine();
+
+        return choice == PurposeIncident;
+    }
+
     /// <summary>
     /// 詢問事發區間。
     /// <para>

@@ -162,7 +162,11 @@ static async Task<int> RunAsync(AuditOptions options, CancellationToken ct)
             return 0;
         }
 
-        options = options with { IncidentWindow = InteractiveWizard.AskIncidentWindow(console) };
+        // 不是每個人都是出事了才來 —— 只想順手檢查電腦的人不該被問「什麼時候被盜」
+        if (InteractiveWizard.AskIsIncidentInvestigation(console))
+        {
+            options = options with { IncidentWindow = InteractiveWizard.AskIncidentWindow(console) };
+        }
     }
 
     var services = BuildServices();
