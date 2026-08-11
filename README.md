@@ -265,13 +265,47 @@ LcAudit.exe --email
 | M2-05 | 這台電腦連出去的 RDP 紀錄 | 資訊 |
 | M2-06 | AnyDesk 連入紀錄 | 高 |
 | M2-07 | TeamViewer 連入紀錄 | 高 |
-| M2-08 | 其他遠端工具（RustDesk、ToDesk、向日葵、AweSun、AnyViewer、DeskIn、ScreenConnect、Atera、UltraViewer、Chrome 遠端桌面） | 高 |
+| M2-08 | 其他遠端工具（共 10 種，清單見下） | 高 |
 | M2-09 | RDP 畫面快取殘留 | 資訊 |
 | M2-10 | 螢幕鎖定／解鎖時間軸 | 資訊 |
 
 > **M2-00 為什麼重要**：清除事件記錄需要管理員權限，是入侵者湮滅跡證的典型動作。如果這項命中，M2 其他項目顯示「通過」就不具意義了 —— 證據可能已經被刪掉。
 >
 > **M2-10 怎麼用**：拿它跟其他時間軸對照。如果「螢幕鎖定期間」出現登入或安裝活動，那不會是你本人做的。
+
+#### 偵測的遠端存取軟體清單
+
+共 **12 種**。報告裡展開 M2-08 也看得到這份清單。
+
+**有連入紀錄剖析**（能判斷「有沒有人真的連進來過」）：
+
+| 工具 | 偵測位置 | 服務名稱 | 連入紀錄檔 |
+|---|---|---|---|
+| **AnyDesk** | `%ProgramData%\AnyDesk`、`%AppData%\AnyDesk` | `AnyDesk` | `connection_trace.txt` |
+| **TeamViewer** | `%ProgramFiles%\TeamViewer`（含 x86 與 `%AppData%`） | `TeamViewer` | `Connections_incoming.txt` |
+
+**僅偵測是否安裝**：
+
+| 工具 | 偵測位置 | 服務名稱 |
+|---|---|---|
+| RustDesk | `%AppData%\RustDesk`、`%ProgramFiles%\RustDesk` | `RustDesk` |
+| ToDesk | `%ProgramFiles%\ToDesk`（含 x86 與 `%AppData%`） | `ToDesk_Service` |
+| 向日葵 Sunlogin | `%ProgramFiles%\Oray`（含 x86） | `SunloginService`、`OrayRemoteService` |
+| Chrome 遠端桌面 | `%ProgramFiles(x86)%\Google\Chrome Remote Desktop` | `chromoting` |
+| AweSun | `%ProgramFiles%\AweRay`（含 x86） | `AweSunService`、`AweRayRemoteService` |
+| AnyViewer | `%ProgramFiles%\AnyViewer`（含 x86） | `AnyViewer` |
+| DeskIn | `%ProgramFiles%\DeskIn`（含 x86） | `DeskInService` |
+| ScreenConnect / ConnectWise Control | `%ProgramFiles%\ScreenConnect Client`（含 x86） | `ScreenConnect Client*` |
+| Atera / Splashtop | `%ProgramFiles%\ATERA Networks`、`Splashtop` | `AteraAgent`、`SplashtopRemoteService` |
+| UltraViewer | `%ProgramFiles%\UltraViewer`（含 x86） | `UltraViewer_Service` |
+
+只要**目錄或服務任一命中**就算偵測到。
+
+> **這是靜態清單，一定不完整。** 這類軟體改路徑、改服務名很頻繁，清單外的工具偵測不到。所以「M2-08 通過」只代表**這 10 種**沒找到，不代表電腦上沒有任何遠端工具。
+>
+> 若你知道清單外的工具，歡迎回報，我們會加進去。
+>
+> **另外注意 Windows 內建的「快速助手」（Quick Assist）**：它不需要安裝，因此不在這份清單裡，但詐騙集團很常用它。如果有人請你按 `Win + Ctrl + Q` 或搜尋「快速助手」並唸一組代碼給對方，那就是在讓對方操作你的電腦。
 
 ### M3 — 持久化與後門（10 項，尚有 3 項未實作）
 

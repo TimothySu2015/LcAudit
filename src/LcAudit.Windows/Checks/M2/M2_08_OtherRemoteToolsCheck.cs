@@ -40,13 +40,18 @@ public sealed class M2_08_OtherRemoteToolsCheck(IRemoteToolScanner scanner) : IC
 
         var found = traces.Where(t => t.HasTrace).ToList();
 
+        // 無論有沒有命中都列出檢查範圍 —— 使用者看到「未偵測到 10 種工具」時，
+        // 應該能知道是哪 10 種，否則無從判斷自己在意的那個有沒有被涵蓋。
+        var scope = traces.Select(t => new Evidence("已檢查", DescribeScope(t.Tool))).ToList();
+
         if (found.Count == 0)
         {
             return Build(
                 CheckStatus.Pass,
-                $"未偵測到清單中 {traces.Count} 種遠端工具的痕跡。",
+                $"未偵測到清單中 {traces.Count} 種遠端工具的痕跡。"
+                + "（清單見下方，這是靜態清單，未涵蓋的工具偵測不到。）",
                 null,
-                []);
+                scope);
         }
 
         var names = string.Join("、", found.Select(t => t.Tool.DisplayName));
@@ -103,7 +108,25 @@ public sealed class M2_08_OtherRemoteToolsCheck(IRemoteToolScanner scanner) : IC
             + "受害者常在被誘導「協助處理問題」時自己裝上，之後對方就能隨時連入。",
             "沒印象裝過的直接移除，並在**另一台乾淨裝置**上更改所有帳號密碼。移除前請先保存本報告。"
             + "對照上面的安裝時間與報告中的時間軸，看看那個時間點你人在不在電腦前。",
-            evidence);
+            [.. evidence, .. scope]);
+    }
+
+    /// <summary>描述某個工具的偵測依據，讓使用者知道我們是憑什麼判斷「有沒有裝」。</summary>
+    private static string DescribeScope(RemoteToolDefinition tool)
+    {
+        var parts = new List<string>();
+
+        if (tool.Directories.Count > 0)
+        {
+            parts.Add($"目錄 {string.Join("、", tool.Directories)}");
+        }
+
+        if (tool.ServiceNames.Count > 0)
+        {
+            parts.Add($"服務 {string.Join("、", tool.ServiceNames)}");
+        }
+
+        return $"{tool.DisplayName}｜{string.Join("；", parts)}";
     }
 
     private Finding Build(
