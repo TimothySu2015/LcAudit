@@ -149,6 +149,22 @@ static async Task<int> RunAsync(AuditOptions options, CancellationToken ct)
     console.Write(new Rule($"[bold]天堂：經典版 帳號安全稽核工具[/] [grey]v{ToolVersion.Current}[/]").LeftJustified());
     console.WriteLine();
 
+    // 由檔案總管雙擊啟動、且沒帶任何參數 —— 使用者多半不會打指令，改走引導流程
+    var guided = options.IsDefaultRun && ConsoleLaunch.IsOwnConsole();
+
+    if (guided)
+    {
+        InteractiveWizard.WriteIntro(console);
+
+        if (!PreFlight.IsElevated() && InteractiveWizard.OfferElevation(console, []))
+        {
+            // 已在新視窗以系統管理員身分重新啟動，本行程結束
+            return 0;
+        }
+
+        options = options with { IncidentWindow = InteractiveWizard.AskIncidentWindow(console) };
+    }
+
     var services = BuildServices();
     await using var provider = services.BuildServiceProvider();
 
@@ -192,7 +208,13 @@ static async Task<int> RunAsync(AuditOptions options, CancellationToken ct)
         new ConsoleReporter(console).Write(report);
     }
 
-    WriteReportFiles(console, provider, report, options);
+    WriteReportFiles(console, provider, report, options, askToUpload: guided);
+
+    // 雙擊執行時視窗會直接關掉，停住讓使用者看得到結果
+    if (guided)
+    {
+        InteractiveWizard.WaitBeforeExit(console);
+    }
 
     // 結束代碼即風險等級（功能規格 §7.1）。這是 Console App 的對外契約。
     return (int)report.Summary.Level;
@@ -202,7 +224,8 @@ static void WriteReportFiles(
     IAnsiConsole console,
     IServiceProvider provider,
     AuditReport report,
-    AuditOptions options)
+    AuditOptions options,
+    bool askToUpload)
 {
     // 寫檔失敗不該讓已完成的掃描結果化為烏有 —— Console 已經輸出過了。
     try
@@ -221,7 +244,20 @@ static void WriteReportFiles(
             console.MarkupLine($"[green]已輸出報告：[/]{Markup.Escape(path)}");
         }
 
-        if (!options.Email)
+        var wantsUpload = options.Email;
+
+        // 引導模式：使用者沒打參數，所以主動問一次要不要請人幫忙看
+        if (!wantsUpload && askToUpload)
+        {
+            console.WriteLine();
+            console.Write(new Rule("[bold]需要有人幫你看報告嗎？[/]").LeftJustified());
+            console.MarkupLine("[grey]可以把報告上傳給協助者。上傳前會先列出報告裡有哪些資訊讓你確認。[/]");
+            console.WriteLine();
+
+            wantsUpload = console.Confirm("要上傳嗎？", defaultValue: false);
+        }
+
+        if (!wantsUpload)
         {
             return;
         }
