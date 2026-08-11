@@ -48,6 +48,11 @@ public static class ReportUploader
 
         console.WriteLine();
         console.Write(new Rule("[bold yellow]上傳報告前請確認[/]").LeftJustified());
+        console.WriteLine();
+        console.MarkupLine("[bold]這項功能預設是關閉的。[/]");
+        console.MarkupLine("[grey]只有在你需要作者協助分析時才需要送出 —— 不送出完全不影響檢查結果，[/]");
+        console.MarkupLine("[grey]報告已經存在你自己的電腦裡，你隨時可以自己看或另外找人看。[/]");
+        console.WriteLine();
         console.MarkupLine($"  檔案　：{Markup.Escape(zipPath)}");
         console.MarkupLine($"  識別碼：[bold]{Markup.Escape(reportId)}[/]");
         console.MarkupLine($"  送往　：{Markup.Escape(MailDraft.Recipient)} 的雲端空間");
@@ -59,6 +64,7 @@ public static class ReportUploader
         console.MarkupLine("  · 已安裝的程式、服務與開機啟動項目的路徑");
         console.MarkupLine("  · 紫P 的安裝位置與簽章資訊");
         console.WriteLine();
+        console.MarkupLine("[bold]用途：[/][grey]僅用於分析你這台電腦的資安弱點與可能的入侵途徑，不作其他用途。[/]");
         console.MarkupLine("[grey]不含密碼、金鑰或遊戲帳號內容。若這台是公司電腦，送出前請先確認公司規定。[/]");
         console.WriteLine();
 

@@ -56,7 +56,7 @@ var incidentTimeOption = new Option<string?>("--incident-time")
 
 var emailOption = new Option<bool>("--email")
 {
-    Description = $"把報告打包成 zip 並上傳給協助者（會先列出送出內容並請你確認）",
+    Description = "送出報告請作者協助分析（預設關閉；送出前會列出內容並請你確認）",
 };
 
 var incidentEndOption = new Option<string?>("--incident-end")
@@ -254,11 +254,13 @@ static void WriteReportFiles(
         if (!wantsUpload && askToUpload)
         {
             console.WriteLine();
-            console.Write(new Rule("[bold]需要有人幫你看報告嗎？[/]").LeftJustified());
-            console.MarkupLine("[grey]可以把報告上傳給協助者。上傳前會先列出報告裡有哪些資訊讓你確認。[/]");
+            console.Write(new Rule("[bold]需要作者協助分析嗎？[/]").LeftJustified());
+            console.MarkupLine("[grey]這項功能[/][bold]預設關閉[/][grey]。報告已經存在你的電腦裡，不送出完全不影響結果。[/]");
+            console.MarkupLine("[grey]只有在你看不懂報告、需要作者幫忙判讀時，才需要送出。[/]");
+            console.MarkupLine("[grey]送出的內容僅用於分析你這台電腦的資安弱點，不作其他用途。[/]");
             console.WriteLine();
 
-            wantsUpload = console.Confirm("要上傳嗎？", defaultValue: false);
+            wantsUpload = console.Confirm("要送出給作者協助分析嗎？", defaultValue: false);
         }
 
         if (!wantsUpload)
