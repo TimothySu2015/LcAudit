@@ -36,7 +36,7 @@ public sealed class IncidentTimelineTests
             WithEvidence("M3-04", new Evidence("帳號建立", "x", Incident.AddHours(5))),
         };
 
-        var matches = IncidentTimeline.Build(findings, Incident);
+        var matches = IncidentTimeline.Build(findings, IncidentWindow.At(Incident));
 
         Assert.Equal("M2-06", matches[0].Finding.Id);
         Assert.Equal("M3-04", matches[1].Finding.Id);
@@ -44,22 +44,11 @@ public sealed class IncidentTimelineTests
     }
 
     [Fact]
-    public void 超出比對範圍的跡證會被排除()
-    {
-        var findings = new[]
-        {
-            WithEvidence("M2-06", new Evidence("安裝時間", "x", Incident.AddDays(-10))),
-        };
-
-        Assert.Empty(IncidentTimeline.Build(findings, Incident));
-    }
-
-    [Fact]
     public void 沒有時間戳的證據不納入比對()
     {
         var findings = new[] { WithEvidence("M1-05", new Evidence("路徑", @"C:\x.dll")) };
 
-        Assert.Empty(IncidentTimeline.Build(findings, Incident));
+        Assert.Empty(IncidentTimeline.Build(findings, IncidentWindow.At(Incident)));
     }
 
     [Fact]
@@ -71,7 +60,7 @@ public sealed class IncidentTimelineTests
             WithEvidence("M2-04", new Evidence("遠端登入", "x", Incident.AddHours(-20))),
         };
 
-        var close = IncidentTimeline.Closest(IncidentTimeline.Build(findings, Incident));
+        var close = IncidentTimeline.Closest(IncidentTimeline.Build(findings, IncidentWindow.At(Incident)));
 
         Assert.Single(close);
         Assert.Equal("M2-06", close[0].Finding.Id);
@@ -92,12 +81,97 @@ public sealed class IncidentTimelineTests
         Assert.Equal(expected, match.Describe());
     }
 
-    [Fact]
-    public void 幾乎同時的描述不分前後()
-    {
-        var match = new IncidentMatch(
-            WithEvidence("M2-06"), new Evidence("x", "y"), TimeSpan.FromSeconds(-30));
+    // ---- 事發區間 ----
+    //
+    // 真實案例：使用者 02:00 還在線上掛機，07:30 發現帳號被盜。他給得出的是這個
+    // 範圍，而不是一個時間點 ——「大約 04:00」只是推估。若只吃單一時間點，
+    // 靠近 07:30 那端的事件（可能正是真正動手的時刻）反而不會被凸顯。
 
-        Assert.Equal("與事發時間幾乎同時", match.Describe());
+    private static readonly DateTimeOffset LastSeenOk = new(2026, 8, 9, 2, 0, 0, TimeSpan.FromHours(8));
+    private static readonly DateTimeOffset Discovered = new(2026, 8, 9, 7, 30, 0, TimeSpan.FromHours(8));
+
+    private static IncidentWindow Window => IncidentWindow.Between(LastSeenOk, Discovered);
+
+    [Fact]
+    public void 落在區間內的跡證距離為零並排在最前()
+    {
+        var findings = new[]
+        {
+            WithEvidence("M2-04", new Evidence("遠端登入", "x", LastSeenOk.AddHours(-3))),
+            WithEvidence("M2-06", new Evidence("AnyDesk 安裝", "x", LastSeenOk.AddHours(4))),   // 06:00，區間內
+            WithEvidence("M3-04", new Evidence("帳號建立", "x", Discovered.AddHours(6))),
+        };
+
+        var matches = IncidentTimeline.Build(findings, Window);
+
+        Assert.Equal("M2-06", matches[0].Finding.Id);
+        Assert.True(matches[0].IsWithinWindow);
+        Assert.Equal("★ 就在事發區間內", matches[0].Describe());
+    }
+
+    [Fact]
+    public void 區間兩端也算在內()
+    {
+        Assert.Equal(TimeSpan.Zero, Window.DistanceFrom(LastSeenOk));
+        Assert.Equal(TimeSpan.Zero, Window.DistanceFrom(Discovered));
+    }
+
+    [Fact]
+    public void 區間外的距離從最近的端點起算()
+    {
+        // 08:30 距離結束端點 07:30 是一小時，而不是距離起點 02:00 的六個半小時
+        Assert.Equal(TimeSpan.FromHours(1), Window.DistanceFrom(Discovered.AddHours(1)));
+        Assert.Equal(TimeSpan.FromHours(-1), Window.DistanceFrom(LastSeenOk.AddHours(-1)));
+    }
+
+    [Fact]
+    public void 起訖顛倒時自動校正()
+    {
+        var reversed = IncidentWindow.Between(Discovered, LastSeenOk);
+
+        Assert.Equal(LastSeenOk, reversed.Start);
+        Assert.Equal(Discovered, reversed.End);
+    }
+
+    [Fact]
+    public void 單一時間點退化為零長度區間()
+    {
+        var point = IncidentWindow.At(LastSeenOk);
+
+        Assert.False(point.IsRange);
+        Assert.Equal(TimeSpan.Zero, point.DistanceFrom(LastSeenOk));
+        Assert.Equal("2026-08-09 02:00", point.Describe());
+    }
+
+    [Fact]
+    public void 區間的顯示文字含起訖()
+        => Assert.Equal("2026-08-09 02:00 ～ 2026-08-09 07:30", Window.Describe());
+
+    /// <summary>
+    /// 刻意不設距離上限。入侵的原因往往遠早於受害者「發現」的時間 ——
+    /// 若硬性濾掉超過 N 天的事件，最關鍵的那筆證據反而會被工具默默丟掉。
+    /// </summary>
+    [Fact]
+    public void 很久以前的跡證仍然列出並標明距離()
+    {
+        var findings = new[]
+        {
+            WithEvidence("M2-06", new Evidence("AnyDesk 安裝", "x", LastSeenOk.AddDays(-30))),
+        };
+
+        var match = Assert.Single(IncidentTimeline.Build(findings, Window));
+
+        Assert.Equal("事發前 30 天", match.Describe());
+        Assert.False(match.IsWithinWindow);
+    }
+
+    [Fact]
+    public void 筆數上限生效()
+    {
+        var findings = Enumerable.Range(1, 80)
+            .Select(i => WithEvidence("M2-04", new Evidence("事件", "x", LastSeenOk.AddMinutes(i))))
+            .ToArray();
+
+        Assert.Equal(IncidentTimeline.MaxMatches, IncidentTimeline.Build(findings, Window).Count);
     }
 }

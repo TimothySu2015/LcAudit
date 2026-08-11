@@ -1,3 +1,4 @@
+using LcAudit.Core.Model;
 using LcAudit.Reporting;
 
 namespace LcAudit.Cli;
@@ -15,8 +16,8 @@ public sealed record AuditOptions
 
     public required ReportFormat Format { get; init; }
 
-    /// <summary>使用者提供的事發時間（帳號被盜、收到通知的時間點）。</summary>
-    public DateTimeOffset? IncidentTime { get; init; }
+    /// <summary>使用者提供的事發區間。</summary>
+    public IncidentWindow? IncidentWindow { get; init; }
 
     /// <summary>打包成 zip 並開啟郵件草稿。工具本身不會傳送任何資料。</summary>
     public bool Email { get; init; }

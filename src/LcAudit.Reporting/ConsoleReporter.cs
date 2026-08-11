@@ -121,28 +121,28 @@ public sealed class ConsoleReporter(IAnsiConsole console)
     /// <summary>事發時間錨點比對。有提供事發時間時，這是使用者最想看的一段。</summary>
     private void WriteIncidentTimeline(AuditReport report)
     {
-        if (report.IncidentTime is not { } incidentTime)
+        if (report.IncidentWindow is not { } window)
         {
             return;
         }
 
-        var matches = IncidentTimeline.Build(report.Findings, incidentTime);
+        var matches = IncidentTimeline.Build(report.Findings, window);
 
         console.WriteLine();
-        console.MarkupLine($"[bold]事發時間比對（{Markup.Escape(incidentTime.ToString("yyyy-MM-dd HH:mm"))}）[/]");
+        console.MarkupLine($"[bold]事發時間比對（{Markup.Escape(window.Describe())}）[/]");
 
         if (matches.Count == 0)
         {
             console.MarkupLine(
-                "[grey]前後 3 天內沒有找到任何帶時間點的跡證。"
-                + "可能是入侵發生得更早，也可能是相關紀錄已被清除或超過保留期。[/]");
+                "[grey]沒有找到任何帶時間點的跡證可供比對。"
+                + "相關紀錄可能已被清除，或超過事件記錄的保留期。[/]");
             return;
         }
 
-        foreach (var match in matches.Take(15))
+        foreach (var match in matches.Take(20))
         {
             var isClose = match.Offset.Duration() <= IncidentTimeline.CloseWindow;
-            var colour = isClose ? "red" : "grey";
+            var colour = match.IsWithinWindow ? "red" : isClose ? "yellow" : "grey";
             var marker = isClose ? "⚠ " : "  ";
 
             console.MarkupLine(

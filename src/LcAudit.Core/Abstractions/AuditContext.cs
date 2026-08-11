@@ -1,3 +1,5 @@
+using LcAudit.Core.Model;
+
 namespace LcAudit.Core.Abstractions;
 
 /// <summary>
@@ -21,14 +23,13 @@ public sealed class AuditContext
     public string? PurpleInstallPath { get; set; }
 
     /// <summary>
-    /// 使用者提供的事發時間（帳號被盜、物品消失、收到通知的時間點）。
+    /// 使用者提供的事發區間（帳號被盜的時間範圍）。
     /// <para>
-    /// 工具本身有大量時間戳，卻沒有**錨點** —— 只能把一堆時間丟給使用者自己比對。
-    /// 但受害者永遠知道大概什麼時候出事，給了這個錨點，所有跡證就能依「與事發時間
-    /// 的距離」排序，把最相關的推到最前面。
+    /// 受害者通常給得出的不是一個時間點，而是「幾點還好、幾點發現不見」的範圍。
+    /// 工具本身有大量時間戳卻沒有錨點，給了這個區間才能把跡證依相關性排序。
     /// </para>
     /// </summary>
-    public DateTimeOffset? IncidentTime { get; init; }
+    public IncidentWindow? IncidentWindow { get; init; }
 
     /// <summary>
     /// Pre-flight 偵測到的遊戲／反作弊程序 PID。

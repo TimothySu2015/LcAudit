@@ -51,12 +51,17 @@ var formatOption = new Option<ReportFormat>("--format")
 
 var incidentTimeOption = new Option<string?>("--incident-time")
 {
-    Description = "事發時間，如 \"2026-08-05 03:20\"。提供後報告會列出與該時間相近的所有跡證",
+    Description = "事發時間，如 \"2026-08-09 02:00\"。若知道確切範圍，再搭配 --incident-end",
 };
 
 var emailOption = new Option<bool>("--email")
 {
     Description = $"把報告打包成 zip 並上傳給協助者（會先列出送出內容並請你確認）",
+};
+
+var incidentEndOption = new Option<string?>("--incident-end")
+{
+    Description = "事發區間的結束時間，如 \"2026-08-09 07:30\"（發現被盜的時間）",
 };
 
 var root = new RootCommand("天堂：經典版 帳號安全稽核工具")
@@ -67,6 +72,7 @@ var root = new RootCommand("天堂：經典版 帳號安全稽核工具")
     skipModuleOption,
     formatOption,
     incidentTimeOption,
+    incidentEndOption,
     emailOption,
 };
 
@@ -80,7 +86,9 @@ root.SetAction((ParseResult parseResult, CancellationToken ct) =>
         SkipModules = (parseResult.GetValue(skipModuleOption) ?? [])
             .ToHashSet(StringComparer.OrdinalIgnoreCase),
         Format = parseResult.GetValue(formatOption),
-        IncidentTime = ParseIncidentTime(parseResult.GetValue(incidentTimeOption)),
+        IncidentWindow = BuildIncidentWindow(
+            ParseIncidentTime(parseResult.GetValue(incidentTimeOption)),
+            ParseIncidentTime(parseResult.GetValue(incidentEndOption))),
         Email = parseResult.GetValue(emailOption),
     };
 
@@ -116,6 +124,24 @@ static DateTimeOffset? ParseIncidentTime(string? value)
     return null;
 }
 
+/// <summary>
+/// 由起訖時間組出事發區間。
+/// <para>
+/// 受害者給得出的通常是「幾點還好、幾點發現不見」的範圍，而不是一個時間點 ——
+/// 只給單一時間時退化為零長度區間。
+/// </para>
+/// </summary>
+static IncidentWindow? BuildIncidentWindow(DateTimeOffset? start, DateTimeOffset? end)
+{
+    if (start is not { } from)
+    {
+        // 只給結束時間也算數 —— 使用者可能只知道「發現的時間」
+        return end is { } only ? IncidentWindow.At(only) : null;
+    }
+
+    return end is { } to ? IncidentWindow.Between(from, to) : IncidentWindow.At(from);
+}
+
 static async Task<int> RunAsync(AuditOptions options, CancellationToken ct)
 {
     var console = AnsiConsole.Console;
@@ -137,7 +163,7 @@ static async Task<int> RunAsync(AuditOptions options, CancellationToken ct)
         IsElevated = isElevated,
         LookbackDays = options.LookbackDays,
         SkippedModules = options.SkipModules,
-        IncidentTime = options.IncidentTime,
+        IncidentWindow = options.IncidentWindow,
         ProtectedPids = protectedPids,
         PurpleInstallPath = options.PurplePath,
     };
@@ -149,7 +175,7 @@ static async Task<int> RunAsync(AuditOptions options, CancellationToken ct)
         ToolVersion = ToolVersion.Current,
         ReportId = Guid.NewGuid().ToString("N"),
         ScannedAt = DateTimeOffset.Now,
-        IncidentTime = options.IncidentTime,
+        IncidentWindow = options.IncidentWindow,
         IsElevated = isElevated,
         Host = new HostInfo
         {
