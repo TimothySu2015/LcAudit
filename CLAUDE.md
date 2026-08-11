@@ -243,15 +243,76 @@ dotnet test --filter "Category!=Integration"         # 排除需實檔的 WinVer
 dotnet run --project src/LcAudit.Cli -- --days 90 --format All
 ```
 
-發佈（v1.0 走 SingleFile + ReadyToRun，**不用 NativeAOT** —— `System.Management` 與 COM interop 未過關，見技術設計 §6.1）：
+本機發佈（平常不需要，發版走 CI）：
 
 ```powershell
-dotnet publish src/LcAudit.Cli -c Release -r win-x64 --self-contained
+dotnet publish src/LcAudit.Cli -c Release -o publish
 ```
 
-CLI 參數：`--days`(90) `--purple-path` `--output`(.\LcAudit-Report) `--format`(All) `--skip-module`。
+發佈設定全部寫在 `LcAudit.Cli.csproj`，不必在指令列指定。SingleFile + ReadyToRun，**不用 NativeAOT**（`System.Management` 與 COM interop 未過關，見技術設計 §6.1）。
+
+CLI 參數：`--days`(90) `--purple-path` `--output`(.\LcAudit-Report) `--format`(All) `--skip-module` `--incident-time` `--incident-end` `--email`。
 
 `TreatWarningsAsErrors=true` 下警告即建置失敗，每次改完主動 build 驗證。執行測試前先依全域規則確認沒有殘留程序鎖檔（`tasklist | findstr LcAudit`）。
+
+## 發版流程
+
+**推一個 `v*` 標籤就會觸發 `.github/workflows/release.yml` 自動建置並發佈 Release。** 不要手動上傳執行檔 —— Release 頁面的檔案必須是 CI 從乾淨環境建出來的，這樣附帶的建置來源證明才有意義。
+
+```powershell
+# 1. 改完後必須全綠、零警告才能往下走
+dotnet build --nologo
+dotnet test --nologo
+
+# 2. 同步更新文件
+#    - CLAUDE.md：判定基準、坑、進度
+#    - README.md：使用者看得到的行為（參數、承諾、檢查項）
+
+# 3. 提交
+git add -A
+git commit -m "..."      # 訊息規範見下
+
+# 4. 推 main
+git push
+
+# 5. 打標籤並推送 —— 這一步才會觸發發佈
+git tag -a v1.1.1 -m "LcAudit v1.1.1 - 一句話說明這版改了什麼"
+git push origin v1.1.1
+
+# 6. 確認 CI 成功
+gh run list --repo TimothySu2015/LcAudit --workflow Release --limit 1
+gh run watch <id> --repo TimothySu2015/LcAudit --exit-status
+gh release list --repo TimothySu2015/LcAudit --limit 2
+```
+
+`release.yml` 會自動：跑測試（失敗就不發佈）、發佈單一執行檔、產生 SHA-256（NFR-09）、產生 GitHub 建置來源證明、建立含驗證說明的 Release。
+
+### 版本號
+
+| 情境 | 遞增 |
+|---|---|
+| 修正誤報、修 bug、文案調整 | patch（`1.1.0` → `1.1.1`） |
+| 新增參數或功能、改變網路行為 | minor（`1.0.9` → `1.1.0`） |
+| 破壞性變更（報告格式、結束代碼語意） | major |
+
+發佈後才發現有問題時**不要刪標籤重推**，直接發下一個 patch。已下載的人拿到的是哪一版必須可追溯 —— 報告裡的 `toolVersion` 就是靠這個對照的。
+
+若某版有嚴重問題（例如會對乾淨機器誤報「建議重灌」），可以刪掉那個 **Release**（下載入口）但**保留標籤**（歷史）：
+
+```powershell
+gh release delete v1.0.0 --repo TimothySu2015/LcAudit --yes    # 不加 --cleanup-tag
+```
+
+### commit 訊息
+
+- 繁體中文，第一行是「做了什麼」而非「改了哪個檔案」
+- **重點是寫「為什麼」** —— 特別是刻意偏離規格、或修正誤報時，要寫清楚原本錯在哪、實測看到什麼。這個專案已經有多次「照抄規格結果誤報」的紀錄，後人需要知道當初的判斷依據
+- 結尾固定加 `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`
+- PowerShell 傳多行訊息用單引號 here-string，結尾 `'@` 必須頂格
+
+### 報告接收端（另外部署，與發版無關）
+
+`tools/apps-script/` 是 `--email` 上傳的接收端，部署在 Google Apps Script 上，**不隨 Release 發佈**。若更換部署（例如遭濫用後重新部署換網址），必須同步更新 `ReportUploader.EndpointUrl` 與 `SharedToken` 並發新版，否則舊版使用者的上傳會失敗。
 
 ## 實作順序
 
