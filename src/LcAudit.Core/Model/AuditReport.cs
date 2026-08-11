@@ -15,6 +15,19 @@ public sealed record AuditReport
     /// </summary>
     public required string ToolVersion { get; init; }
 
+    /// <summary>
+    /// 本份報告的唯一識別碼，同時出現在檔名、報告內容與郵件主旨中。
+    /// <para>
+    /// 用途是「這份報告是誰的」—— 使用者把報告寄來時，光看主機名稱無法區分
+    /// （很多人都叫 DESKTOP-XXXXXX），也不該要求他們附上個人資訊。
+    /// </para>
+    /// <para>
+    /// 用 32 位元十六進位（<c>Guid</c> 的 N 格式）而非含連字號的 D 格式 ——
+    /// 檔名本身已經用 <c>-</c> 當分隔符，再混入連字號會讓檔名難以拆解。
+    /// </para>
+    /// </summary>
+    public required string ReportId { get; init; }
+
     public required DateTimeOffset ScannedAt { get; init; }
 
     /// <summary>是否以系統管理員身分執行。未提權時 Security log 相關項會是 Inconclusive。</summary>

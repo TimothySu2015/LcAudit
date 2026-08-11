@@ -54,6 +54,11 @@ var incidentTimeOption = new Option<string?>("--incident-time")
     Description = "事發時間，如 \"2026-08-05 03:20\"。提供後報告會列出與該時間相近的所有跡證",
 };
 
+var emailOption = new Option<bool>("--email")
+{
+    Description = $"把報告打包成 zip 並開啟郵件草稿寄給 {MailDraft.Recipient}（不會自動傳送）",
+};
+
 var root = new RootCommand("天堂：經典版 帳號安全稽核工具")
 {
     daysOption,
@@ -62,6 +67,7 @@ var root = new RootCommand("天堂：經典版 帳號安全稽核工具")
     skipModuleOption,
     formatOption,
     incidentTimeOption,
+    emailOption,
 };
 
 root.SetAction((ParseResult parseResult, CancellationToken ct) =>
@@ -75,6 +81,7 @@ root.SetAction((ParseResult parseResult, CancellationToken ct) =>
             .ToHashSet(StringComparer.OrdinalIgnoreCase),
         Format = parseResult.GetValue(formatOption),
         IncidentTime = ParseIncidentTime(parseResult.GetValue(incidentTimeOption)),
+        Email = parseResult.GetValue(emailOption),
     };
 
     return RunAsync(options, ct);
@@ -140,6 +147,7 @@ static async Task<int> RunAsync(AuditOptions options, CancellationToken ct)
     var report = new AuditReport
     {
         ToolVersion = ToolVersion.Current,
+        ReportId = Guid.NewGuid().ToString("N"),
         ScannedAt = DateTimeOffset.Now,
         IncidentTime = options.IncidentTime,
         IsElevated = isElevated,
@@ -186,6 +194,16 @@ static void WriteReportFiles(
         {
             console.MarkupLine($"[green]已輸出報告：[/]{Markup.Escape(path)}");
         }
+
+        if (!options.Email)
+        {
+            return;
+        }
+
+        var zipPath = provider.GetRequiredService<ReportPackager>()
+                              .Package(report, options.OutputPath, written);
+
+        MailDraft.Open(console, zipPath, report.ReportId);
     }
     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
     {
@@ -222,6 +240,7 @@ static ServiceCollection BuildServices()
     services.AddSingleton<HtmlReporter>();
     services.AddSingleton<JsonReporter>();
     services.AddSingleton<ReportWriter>();
+    services.AddSingleton<ReportPackager>();
 
     // Checks —— 每個都包一層 SafeCheckDecorator（NFR-04）
     RegisterCheck<M1_00_InstallPathCheck>(services);

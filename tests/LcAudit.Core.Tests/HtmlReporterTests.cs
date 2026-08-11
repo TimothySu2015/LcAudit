@@ -12,6 +12,7 @@ public sealed class HtmlReporterTests
     private static AuditReport Report(params Finding[] findings) => new()
     {
         ToolVersion = "9.9.9-test",
+        ReportId = "abc123def456",
         ScannedAt = ScanTime,
         IsElevated = true,
         Host = new HostInfo { ComputerName = "PC-01", OsVersion = "Windows 11", TimeZone = "Taipei Standard Time" },

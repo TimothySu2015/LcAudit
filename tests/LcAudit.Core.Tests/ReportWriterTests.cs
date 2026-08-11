@@ -15,6 +15,7 @@ public sealed class ReportWriterTests : IDisposable
     private static AuditReport Report(string computerName = "PC-01") => new()
     {
         ToolVersion = "9.9.9-test",
+        ReportId = "abc123def456",
         ScannedAt = new DateTimeOffset(2026, 8, 10, 14, 30, 5, TimeSpan.FromHours(8)),
         IsElevated = true,
         Host = new HostInfo { ComputerName = computerName, OsVersion = "Windows 11", TimeZone = "Taipei" },
@@ -50,8 +51,64 @@ public sealed class ReportWriterTests : IDisposable
     }
 
     [Fact]
-    public void 檔名符合功能規格8_2()
-        => Assert.Equal("LcAudit-PC-01-20260810-143005", ReportWriter.BuildBaseName(Report()));
+    public void 檔名含報告識別碼供收件者區分是誰的報告()
+        => Assert.Equal("LcAudit-PC-01-20260810-143005-abc123def456", ReportWriter.BuildBaseName(Report()));
+
+    [Fact]
+    public void 報告識別碼也會經過檔名淨化()
+    {
+        var name = ReportWriter.BuildBaseName(Report() with { ReportId = "bad/id:1" });
+
+        Assert.DoesNotContain('/', name);
+        Assert.DoesNotContain(':', name);
+    }
+
+    [Fact]
+    public void 打包成zip後檔名與報告一致()
+    {
+        var written = _writer.Write(Report(), _output, ReportFormat.All);
+
+        var zipPath = new ReportPackager().Package(Report(), _output, written);
+
+        Assert.EndsWith("LcAudit-PC-01-20260810-143005-abc123def456.zip", zipPath, StringComparison.Ordinal);
+        Assert.True(File.Exists(zipPath));
+    }
+
+    [Fact]
+    public void zip內含全部報告檔()
+    {
+        var written = _writer.Write(Report(), _output, ReportFormat.All);
+        var zipPath = new ReportPackager().Package(Report(), _output, written);
+
+        using var archive = System.IO.Compression.ZipFile.OpenRead(zipPath);
+
+        Assert.Equal(2, archive.Entries.Count);
+        Assert.Contains(archive.Entries, e => e.Name.EndsWith(".html", StringComparison.Ordinal));
+        Assert.Contains(archive.Entries, e => e.Name.EndsWith(".json", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void 重複打包會覆寫而非失敗()
+    {
+        var written = _writer.Write(Report(), _output, ReportFormat.Html);
+        var packager = new ReportPackager();
+
+        packager.Package(Report(), _output, written);
+        var second = packager.Package(Report(), _output, written);
+
+        Assert.True(File.Exists(second));
+    }
+
+    [Fact]
+    public void 打包只寫入指定的輸出目錄()
+    {
+        // NFR-03：除 --output 外不得寫入任何路徑
+        var written = _writer.Write(Report(), _output, ReportFormat.All);
+
+        var zipPath = new ReportPackager().Package(Report(), _output, written);
+
+        Assert.StartsWith(_output.FullName, Path.GetFullPath(zipPath), StringComparison.OrdinalIgnoreCase);
+    }
 
     [Fact]
     public void 電腦名稱的非法字元會被取代()

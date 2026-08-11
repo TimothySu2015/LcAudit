@@ -44,9 +44,17 @@ public sealed class ReportWriter(HtmlReporter htmlReporter, JsonReporter jsonRep
         return written;
     }
 
-    /// <summary><c>LcAudit-{COMPUTERNAME}-{yyyyMMdd-HHmmss}</c>（功能規格 §8.2）。</summary>
+    /// <summary>
+    /// <c>LcAudit-{COMPUTERNAME}-{yyyyMMdd-HHmmss}-{ReportId}</c>。
+    /// <para>功能規格 §8.2 的檔名再加上報告識別碼，供收件者區分是誰的報告。</para>
+    /// </summary>
     internal static string BuildBaseName(AuditReport report)
-        => $"LcAudit-{Sanitise(report.Host.ComputerName)}-{report.ScannedAt:yyyyMMdd-HHmmss}";
+    {
+        ArgumentNullException.ThrowIfNull(report);
+
+        return $"LcAudit-{Sanitise(report.Host.ComputerName)}-{report.ScannedAt:yyyyMMdd-HHmmss}"
+               + $"-{Sanitise(report.ReportId)}";
+    }
 
     /// <summary>電腦名稱理論上不含非法字元，但報告檔名不值得為此冒險。</summary>
     private static string Sanitise(string value)
