@@ -56,7 +56,7 @@ var incidentTimeOption = new Option<string?>("--incident-time")
 
 var emailOption = new Option<bool>("--email")
 {
-    Description = $"把報告打包成 zip 並開啟郵件草稿寄給 {MailDraft.Recipient}（不會自動傳送）",
+    Description = $"把報告打包成 zip 並上傳給協助者（會先列出送出內容並請你確認）",
 };
 
 var root = new RootCommand("天堂：經典版 帳號安全稽核工具")
@@ -203,7 +203,18 @@ static void WriteReportFiles(
         var zipPath = provider.GetRequiredService<ReportPackager>()
                               .Package(report, options.OutputPath, written);
 
-        MailDraft.Open(console, zipPath, report.ReportId);
+        if (!ReportUploader.Confirm(console, zipPath, report.ReportId))
+        {
+            // 使用者不上傳，仍協助他自行寄送
+            MailDraft.Open(console, zipPath, report.ReportId);
+            return;
+        }
+
+        if (!ReportUploader.UploadAsync(console, zipPath, report.ReportId, CancellationToken.None)
+                           .GetAwaiter().GetResult())
+        {
+            MailDraft.Open(console, zipPath, report.ReportId);
+        }
     }
     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
     {

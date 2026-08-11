@@ -203,7 +203,7 @@ tests/LcAudit.TestAssets/       已簽章／未簽章／竄改的測試檔
 | 約束 | 影響 |
 |---|---|
 | 全程唯讀 | 除 `--output` 目錄外不得寫入任何路徑；不得修改檔案時間戳；不做任何修復／清除／隔離 |
-| 完全離線 | 不得發出任何網路請求。`fdwRevocationChecks = WTD_REVOKE_NONE`，`dwProvFlags |= WTD_CACHE_ONLY_URL_RETRIEVAL`；M4-04 反查用內建靜態清單，不做 DNS |
+| 檢查全程離線 | **所有檢查項**不得發出任何網路請求。`fdwRevocationChecks = WTD_REVOKE_NONE`，`dwProvFlags \|= WTD_CACHE_ONLY_URL_RETRIEVAL`；M4-04 反查用內建靜態清單，不做 DNS。<br>**唯一例外**是 `ReportUploader`（`--email` 上傳報告），它在檢查全部完成之後才執行，且必須經使用者於提示中確認。新增網路呼叫請先確認它不在檢查路徑上 |
 | 降級不中斷 | 任一檢查項失敗只標 `Inconclusive`，不影響其餘項目 |
 | 效能 | 完整掃描 < 3 分鐘；事件查詢 `MaxEvents` 預設 5000；**不要對每筆事件呼叫 `ToXml()`**，用 `EventLogPropertySelector` 具名 XPath；篩選一律下推到 XPath，不要撈回來再用 C# 過濾（4624 動輒數萬筆） |
 | 中文 | `InvariantGlobalization=false`（報告與路徑含繁中，TC-09）；報告檔輸出 UTF-8 with BOM；Console 輸出開頭設 `Console.OutputEncoding = Encoding.UTF8`，否則舊版主控台顯示繁中會亂碼 |
