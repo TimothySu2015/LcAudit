@@ -21,6 +21,16 @@ public sealed class AuditContext
     public string? PurpleInstallPath { get; set; }
 
     /// <summary>
+    /// 使用者提供的事發時間（帳號被盜、物品消失、收到通知的時間點）。
+    /// <para>
+    /// 工具本身有大量時間戳，卻沒有**錨點** —— 只能把一堆時間丟給使用者自己比對。
+    /// 但受害者永遠知道大概什麼時候出事，給了這個錨點，所有跡證就能依「與事發時間
+    /// 的距離」排序，把最相關的推到最前面。
+    /// </para>
+    /// </summary>
+    public DateTimeOffset? IncidentTime { get; init; }
+
+    /// <summary>
     /// Pre-flight 偵測到的遊戲／反作弊程序 PID。
     /// <para>
     /// 偵測只用 <c>Process.ProcessName</c> 比對名稱，不開 process handle。

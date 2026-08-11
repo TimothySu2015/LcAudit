@@ -37,6 +37,7 @@ public sealed class HtmlReporter
 
         AppendHeader(sb, report);
         AppendSummaryCard(sb, report.Summary);
+        AppendIncidentTimeline(sb, report);
         AppendHostInfo(sb, report);
         AppendTimeline(sb, report.Findings);
         AppendFindings(sb, report.Findings);
@@ -165,6 +166,54 @@ public sealed class HtmlReporter
         {
             sb.AppendLine($"<div class=\"card notice\">{Esc(summary.CoverageNote)}</div>");
         }
+    }
+
+    /// <summary>
+    /// 事發時間錨點比對。放在風險等級卡片正下方 —— 使用者提供了事發時間，
+    /// 那「事發當下發生了什麼」就是他最想知道的事，不該埋在時間軸裡讓他自己找。
+    /// </summary>
+    private static void AppendIncidentTimeline(StringBuilder sb, AuditReport report)
+    {
+        if (report.IncidentTime is not { } incidentTime)
+        {
+            return;
+        }
+
+        var matches = IncidentTimeline.Build(report.Findings, incidentTime);
+        var closest = IncidentTimeline.Closest(matches);
+
+        sb.AppendLine($"<h2>事發時間比對（{Esc(incidentTime.ToString("yyyy-MM-dd HH:mm"))}）</h2>");
+
+        if (matches.Count == 0)
+        {
+            sb.AppendLine("""
+                <p class="empty">在你提供的事發時間前後 3 天內，沒有找到任何帶時間點的跡證。
+                這可能代表入侵發生得更早，也可能是相關紀錄已被清除或超過保留期。</p>
+                """);
+            return;
+        }
+
+        if (closest.Count > 0)
+        {
+            sb.AppendLine($"<div class=\"card notice\"><strong>有 {closest.Count} 筆跡證與事發時間相近（2 小時內）</strong>"
+                          + " —— 這些最值得優先查證。</div>");
+        }
+
+        sb.AppendLine("<table><thead><tr><th>與事發時間</th><th>發生時間</th><th>來源項目</th><th>內容</th></tr></thead><tbody>");
+
+        foreach (var match in matches.Take(50))
+        {
+            var isClose = match.Offset.Duration() <= IncidentTimeline.CloseWindow;
+
+            sb.AppendLine("<tr>"
+                + $"<td>{(isClose ? "<strong>" : string.Empty)}{Esc(match.Describe())}{(isClose ? "</strong>" : string.Empty)}</td>"
+                + $"<td>{Esc(match.Evidence.Timestamp!.Value.ToString("yyyy-MM-dd HH:mm:ss"))}</td>"
+                + $"<td>{Esc(match.Finding.Id)} {Esc(match.Finding.Title)}</td>"
+                + $"<td>{Esc(match.Label)}：{Esc(match.Evidence.Value)}</td>"
+                + "</tr>");
+        }
+
+        sb.AppendLine("</tbody></table>");
     }
 
     private static void AppendHostInfo(StringBuilder sb, AuditReport report)

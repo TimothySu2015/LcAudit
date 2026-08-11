@@ -12,6 +12,7 @@ public sealed class ConsoleReporter(IAnsiConsole console)
 
         WriteFindings(report.Findings);
         WriteSummary(report.Summary);
+        WriteIncidentTimeline(report);
         WriteForensicNotice(report);
     }
 
@@ -115,6 +116,41 @@ public sealed class ConsoleReporter(IAnsiConsole console)
         }
 
         return string.Join(Environment.NewLine, lines);
+    }
+
+    /// <summary>事發時間錨點比對。有提供事發時間時，這是使用者最想看的一段。</summary>
+    private void WriteIncidentTimeline(AuditReport report)
+    {
+        if (report.IncidentTime is not { } incidentTime)
+        {
+            return;
+        }
+
+        var matches = IncidentTimeline.Build(report.Findings, incidentTime);
+
+        console.WriteLine();
+        console.MarkupLine($"[bold]事發時間比對（{Markup.Escape(incidentTime.ToString("yyyy-MM-dd HH:mm"))}）[/]");
+
+        if (matches.Count == 0)
+        {
+            console.MarkupLine(
+                "[grey]前後 3 天內沒有找到任何帶時間點的跡證。"
+                + "可能是入侵發生得更早，也可能是相關紀錄已被清除或超過保留期。[/]");
+            return;
+        }
+
+        foreach (var match in matches.Take(15))
+        {
+            var isClose = match.Offset.Duration() <= IncidentTimeline.CloseWindow;
+            var colour = isClose ? "red" : "grey";
+            var marker = isClose ? "⚠ " : "  ";
+
+            console.MarkupLine(
+                $"[{colour}]{marker}{Markup.Escape(match.Describe())}[/]"
+                + $"　{Markup.Escape(match.Evidence.Timestamp!.Value.ToString("yyyy-MM-dd HH:mm:ss"))}"
+                + $"　{Markup.Escape(match.Finding.Id)} {Markup.Escape(match.Label)}"
+                + $"：{Markup.Escape(match.Evidence.Value)}");
+        }
     }
 
     private void WriteForensicNotice(AuditReport report)

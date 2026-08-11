@@ -85,6 +85,27 @@ public abstract class RemoteToolCheckBase(
                 ? "但找不到連入紀錄檔，無法判斷是否曾被連入"
                 : "連入紀錄檔中沒有連入記錄";
 
+            // 「什麼時候被裝的」本身就是證據。
+            //
+            // 沒有連入紀錄不代表沒被連入 —— 攻擊者用完把紀錄檔清掉、或移除工具只剩
+            // 殘留目錄，都會是這個結果。真實案例：一台被盜帳號的電腦，AnyDesk 的
+            // 安裝時間正好就是帳號被盜的時間。
+            //
+            // 若安裝當下螢幕是鎖定的、或當時正好有人遠端連著，那就不是「值得問一下」，
+            // 而是「有人趁你不在的時候裝的」—— 這是明確異常。
+            if (installContext?.HasEvidence == true)
+            {
+                return Build(
+                    CheckStatus.Fail,
+                    $"偵測到 {tool.DisplayName} 已安裝，{reason}。"
+                    + installStory
+                    + "**沒有連入紀錄不代表沒被連入** —— 紀錄檔可能已被清除，"
+                    + "或工具被移除後只剩下殘留目錄。",
+                    $"立即保存本報告，移除 {tool.DisplayName}，"
+                    + "並在**另一台乾淨裝置**上更改所有帳號密碼。",
+                    evidence);
+            }
+
             return Build(
                 CheckStatus.Warning,
                 $"偵測到 {tool.DisplayName} 已安裝，{reason}。"

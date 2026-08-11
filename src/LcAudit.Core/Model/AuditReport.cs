@@ -22,6 +22,9 @@ public sealed record AuditReport
 
     public required HostInfo Host { get; init; }
 
+    /// <summary>使用者提供的事發時間；未指定為 <c>null</c>。</summary>
+    public DateTimeOffset? IncidentTime { get; init; }
+
     public required AuditSummary Summary { get; init; }
 
     public required IReadOnlyList<Finding> Findings { get; init; }

@@ -1,4 +1,5 @@
 using System.CommandLine;
+using System.Globalization;
 using System.Text;
 using LcAudit.Cli;
 using LcAudit.Core.Abstractions;
@@ -48,6 +49,11 @@ var formatOption = new Option<ReportFormat>("--format")
     DefaultValueFactory = _ => ReportFormat.All,
 };
 
+var incidentTimeOption = new Option<string?>("--incident-time")
+{
+    Description = "事發時間，如 \"2026-08-05 03:20\"。提供後報告會列出與該時間相近的所有跡證",
+};
+
 var root = new RootCommand("天堂：經典版 帳號安全稽核工具")
 {
     daysOption,
@@ -55,6 +61,7 @@ var root = new RootCommand("天堂：經典版 帳號安全稽核工具")
     outputOption,
     skipModuleOption,
     formatOption,
+    incidentTimeOption,
 };
 
 root.SetAction((ParseResult parseResult, CancellationToken ct) =>
@@ -67,12 +74,40 @@ root.SetAction((ParseResult parseResult, CancellationToken ct) =>
         SkipModules = (parseResult.GetValue(skipModuleOption) ?? [])
             .ToHashSet(StringComparer.OrdinalIgnoreCase),
         Format = parseResult.GetValue(formatOption),
+        IncidentTime = ParseIncidentTime(parseResult.GetValue(incidentTimeOption)),
     };
 
     return RunAsync(options, ct);
 });
 
 return await root.Parse(args).InvokeAsync();
+
+/// <summary>
+/// 寬鬆解析使用者輸入的事發時間。
+/// <para>
+/// 使用者會用各種寫法（<c>2026-08-05 03:20</c>、<c>2026/8/5 3:20</c>、只有日期…），
+/// 解析不出來就當作沒提供 —— 不該因為時間格式打錯就讓整個掃描失敗。
+/// </para>
+/// </summary>
+static DateTimeOffset? ParseIncidentTime(string? value)
+{
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return null;
+    }
+
+    if (DateTimeOffset.TryParse(value, CultureInfo.CurrentCulture, DateTimeStyles.AssumeLocal, out var parsed)
+        || DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out parsed))
+    {
+        return parsed;
+    }
+
+    AnsiConsole.MarkupLine(
+        $"[yellow]無法解析事發時間「{Markup.Escape(value)}」，已忽略。"
+        + "請用類似 \"2026-08-05 03:20\" 的格式。[/]");
+
+    return null;
+}
 
 static async Task<int> RunAsync(AuditOptions options, CancellationToken ct)
 {
@@ -95,6 +130,7 @@ static async Task<int> RunAsync(AuditOptions options, CancellationToken ct)
         IsElevated = isElevated,
         LookbackDays = options.LookbackDays,
         SkippedModules = options.SkipModules,
+        IncidentTime = options.IncidentTime,
         ProtectedPids = protectedPids,
         PurpleInstallPath = options.PurplePath,
     };
@@ -105,6 +141,7 @@ static async Task<int> RunAsync(AuditOptions options, CancellationToken ct)
     {
         ToolVersion = ToolVersion.Current,
         ScannedAt = DateTimeOffset.Now,
+        IncidentTime = options.IncidentTime,
         IsElevated = isElevated,
         Host = new HostInfo
         {

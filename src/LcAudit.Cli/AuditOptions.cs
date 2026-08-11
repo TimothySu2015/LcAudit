@@ -14,4 +14,7 @@ public sealed record AuditOptions
     public required IReadOnlySet<string> SkipModules { get; init; }
 
     public required ReportFormat Format { get; init; }
+
+    /// <summary>使用者提供的事發時間（帳號被盜、收到通知的時間點）。</summary>
+    public DateTimeOffset? IncidentTime { get; init; }
 }
