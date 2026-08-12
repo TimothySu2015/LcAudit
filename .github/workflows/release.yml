@@ -126,6 +126,12 @@ jobs:
 
           本執行檔附有 GitHub 建置來源證明，可用 ``gh attestation verify .\LcAudit.exe --repo ${{ github.repository }}`` 驗證它確實由本 repo 建置。
 
+          ## 防毒掃描結果
+
+          [在 VirusTotal 上檢視這個檔案](https://www.virustotal.com/gui/file/${{ steps.hash.outputs.sha256 }})
+
+          這個連結是用上方的 SHA-256 直接組出來的 —— 也就是說，它指向的**必定**是這個檔案，不會是別的。若顯示「找不到」，代表還沒有人掃過，你可以自己上傳成為第一個。
+
           ## 防毒軟體提醒
 
           本工具未經程式碼簽章，且行為包含列舉處理程序、讀取安全性事件記錄、查詢 Defender 設定 —— 這些與惡意程式的樣式有重疊，可能觸發防毒警告。請用上方的 SHA-256 與建置來源證明確認檔案無誤後再放行。
